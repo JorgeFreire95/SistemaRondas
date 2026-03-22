@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { User, Lock } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const Container = styled.div`
@@ -96,18 +97,32 @@ const SeedButton = styled.button`
 
 const LoginScreen = () => {
   const { login, addUser } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    const res = await login(email, password);
-    if (!res.success) alert(res.message);
+    setLoading(true);
+    const res = await login(email.trim(), password.trim());
+    if (res.success) {
+      navigate('/');
+    } else {
+      alert(res.message);
+      setLoading(false);
+    }
   };
 
   const handleSeed = async () => {
     const res = await addUser('guardia@test.com', '123456', 'Guardia de Prueba', 'guardia');
     if (res.success) alert('Guardia creado: guardia@test.com / 123456');
+    else alert(res.message);
+  };
+
+  const handleSeedAdmin = async () => {
+    const res = await addUser('admin@test.com', '123456', 'Admin de Prueba', 'admin');
+    if (res.success) alert('Admin creado: admin@test.com / 123456');
     else alert(res.message);
   };
 
@@ -139,6 +154,9 @@ const LoginScreen = () => {
           </InputGroup>
           <Button type="submit">Ingresar</Button>
           <SeedButton type="button" onClick={handleSeed}>Crear Guardia de Prueba</SeedButton>
+          <SeedButton type="button" onClick={handleSeedAdmin} style={{ marginTop: '8px', borderColor: '#007bff', color: '#007bff' }}>
+            Crear Administrador de Prueba
+          </SeedButton>
         </form>
       </Card>
     </Container>

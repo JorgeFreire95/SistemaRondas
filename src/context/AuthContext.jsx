@@ -17,13 +17,25 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          setUser({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            ...userDoc.data()
-          });
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            setUser({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              ...userDoc.data()
+            });
+          } else {
+            // Documento no existe, pero el usuario está autenticado
+            setUser({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              role: 'guest' // Perfil mínimo para salir del login
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching user doc:", error);
+          setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role: 'error' });
         }
       } else {
         setUser(null);

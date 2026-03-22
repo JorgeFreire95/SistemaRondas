@@ -4,12 +4,13 @@ import { getFirestore } from 'firebase/firestore';
 
 // Credentials should be filled by user
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyAoSUxKjXRe2exPPaJ9A6a31tRg8mBF22g",
+  authDomain: "sistemarondas-72799.firebaseapp.com",
+  projectId: "sistemarondas-72799",
+  storageBucket: "sistemarondas-72799.firebasestorage.app",
+  messagingSenderId: "797332524004",
+  appId: "1:797332524004:web:cc1f168d4e5b2a899295f1",
+  measurementId: "G-6D38J8HY0H"
 };
 
 const app = initializeApp(firebaseConfig);
