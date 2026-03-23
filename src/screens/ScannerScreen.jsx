@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Image as ImageIcon } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Camera } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
@@ -124,13 +124,50 @@ const ModalOverlay = styled.div`
 
 const InfoBox = styled.div`
   position: absolute;
-  bottom: 40px;
-  left: 20px;
-  right: 20px;
+  bottom: 0px;
+  left: 0px;
+  right: 0px;
   background: white;
   padding: 20px;
-  border-radius: 16px;
+  border-radius: 20px 20px 0 0;
   z-index: 10;
+  box-shadow: 0 -5px 15px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const ManualInputWrapper = styled.div`
+  display: flex;
+  gap: 10px;
+`;
+
+const StyledInput = styled.input`
+  flex: 1;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  &:focus {
+    outline: none;
+    border-color: #4CAF50;
+  }
+`;
+
+const SubmitBtn = styled.button`
+  background: #1A1A1A;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 48px;
+  font-size: 14px;
 `;
 
 const ScannerScreen = () => {
@@ -143,6 +180,7 @@ const ScannerScreen = () => {
   const [markingPoints, setMarkingPoints] = useState([]);
   const [activeQuestion, setActiveQuestion] = useState(null);
   const [scanner, setScanner] = useState(null);
+  const [manualCode, setManualCode] = useState('');
 
   useEffect(() => {
     if (!user?.assignedInstallationId) return;
@@ -157,6 +195,62 @@ const ScannerScreen = () => {
       if (err.code !== 'permission-denied') console.error("Error fetching marking points:", err);
     });
   }, [user]);
+
+  const processCode = async (code) => {
+    const trimmedCode = code.trim();
+    if (!trimmedCode) return;
+
+    setLastData(trimmedCode);
+    
+    // Check if this QR matches a predefined point (Super robust match)
+    const matchedPoint = markingPoints.find(p => {
+      const dbCode = String(p.qrCode || '').trim().toLowerCase();
+      const inputCode = String(trimmedCode || '').trim().toLowerCase();
+      return dbCode === inputCode;
+    });
+    
+    if (matchedPoint && matchedPoint.question) {
+      setActiveQuestion(matchedPoint);
+    } else {
+      const success = await addScannedPoint(trimmedCode, matchedPoint ? {
+        pointId: matchedPoint.id,
+        pointName: matchedPoint.name
+      } : {});
+
+      if (success) {
+        if (matchedPoint) {
+           alert(`Punto detectado: ${matchedPoint.name}`);
+        } else if (markingPoints.length === 0) {
+           alert(`ERROR: No hay puntos cargados.\n\nInstalación asignada: ${user?.assignedInstallationId || 'NINGUNA'}\n\nVerifica en el panel de Administrador que el guardia tenga una instalación asignada y que esa instalación tenga puntos creados.`);
+        } else {
+           const pInfo = markingPoints.map(p => `• ${p.name}: [${p.qrCode}]`).join('\n');
+           alert(`Código "${trimmedCode}" no coincide con los puntos de esta instalación.\n\nInstalación: ${user?.assignedInstallationId}\nPuntos en base de datos:\n${pInfo}`);
+        }
+        
+        if (returnTo) navigate(returnTo);
+      }
+    }
+  };
+
+  const handleManualSubmit = () => {
+    if (manualCode) {
+      processCode(manualCode);
+      setManualCode('');
+    }
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      const html5QrCode = new Html5Qrcode("reader-hidden");
+      const decodedText = await html5QrCode.scanImage(file, true);
+      processCode(decodedText);
+    } catch (err) {
+      alert("No se detectó ningún código en la imagen.");
+    }
+  };
 
   const handleAnswer = async (answer) => {
     const point = activeQuestion;
@@ -190,24 +284,7 @@ const ScannerScreen = () => {
 
       const onScanSuccess = async (decodedText) => {
         if (decodedText !== lastData) {
-          setLastData(decodedText);
-          
-          // Check if this QR matches a predefined point
-          const matchedPoint = markingPoints.find(p => p.qrCode === decodedText);
-          
-          if (matchedPoint && matchedPoint.question) {
-            // Pause scanner/logic to show question
-            setActiveQuestion(matchedPoint);
-          } else {
-            const success = await addScannedPoint(decodedText, matchedPoint ? {
-              pointId: matchedPoint.id,
-              pointName: matchedPoint.name
-            } : {});
-            if (success) {
-               alert(matchedPoint ? `Punto detectado: ${matchedPoint.name}` : `Código desconocido: ${decodedText}`);
-               if (returnTo) navigate(returnTo);
-            }
-          }
+          await processCode(decodedText);
         }
       };
 
@@ -264,12 +341,40 @@ const ScannerScreen = () => {
         </ModalOverlay>
       )}
 
-      {lastData && !activeQuestion && (
+      {!activeQuestion && (
         <InfoBox>
-           <strong style={{ display: 'block', marginBottom: 5 }}>Último escaneo:</strong>
-           <span style={{ fontSize: 14 }}>{lastData}</span>
+           <ManualInputWrapper>
+             <StyledInput 
+               placeholder="Código manual..." 
+               value={manualCode}
+               onChange={(e) => setManualCode(e.target.value)}
+             />
+             <input 
+               type="file" 
+               accept="image/*" 
+               id="file-upload" 
+               hidden 
+               onChange={handleImageUpload} 
+             />
+             <SubmitBtn onClick={() => document.getElementById('file-upload').click()} title="Escanear desde imagen">
+               <ImageIcon size={20} />
+               <span>Galería</span>
+             </SubmitBtn>
+             <SubmitBtn onClick={handleManualSubmit} style={{ background: '#4CAF50' }}>
+               OK
+             </SubmitBtn>
+           </ManualInputWrapper>
+           
+           {lastData && (
+             <div style={{ borderTop: '1px solid #eee', paddingTop: 10 }}>
+                <strong style={{ display: 'block', fontSize: 12, color: '#666' }}>Último escaneo:</strong>
+                <span style={{ fontSize: 14 }}>{lastData}</span>
+             </div>
+           )}
         </InfoBox>
       )}
+
+      <div id="reader-hidden" style={{ display: 'none' }}></div>
     </Container>
   );
 };

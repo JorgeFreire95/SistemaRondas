@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 // Credentials should be filled by user
 const firebaseConfig = {
@@ -21,4 +22,5 @@ setPersistence(auth, browserSessionPersistence)
   .catch((error) => console.error("Persistence error:", error));
 
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 export default app;

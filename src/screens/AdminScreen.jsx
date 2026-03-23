@@ -80,9 +80,9 @@ const RoleBtn = styled.button`
   flex: 1;
   padding: 10px;
   border-radius: 8px;
-  border: 1px solid ${props => props.active ? '#1A1A1A' : '#EEE'};
-  background: ${props => props.active ? '#1A1A1A' : 'white'};
-  color: ${props => props.active ? 'white' : '#666'};
+  border: 1px solid ${props => props.$active ? '#1A1A1A' : '#EEE'};
+  background: ${props => props.$active ? '#1A1A1A' : 'white'};
+  color: ${props => props.$active ? 'white' : '#666'};
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -146,7 +146,7 @@ const AdminScreen = () => {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('123456');
-  const [role, setRole] = useState('guardia');
+  const [role, setRole] = useState('admin');
   const [users, setUsers] = useState([]);
 
   useEffect(() => {
@@ -186,8 +186,8 @@ const AdminScreen = () => {
           <Input placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} type="password" />
           
           <RoleSelector>
-            {['guardia', 'admin', 'director'].map(r => (
-              <RoleBtn key={r} active={role === r} onClick={() => setRole(r)}>
+            {['admin', 'director'].map(r => (
+              <RoleBtn key={r} $active={role === r} onClick={() => setRole(r)}>
                 {r.toUpperCase()}
               </RoleBtn>
             ))}
@@ -202,7 +202,7 @@ const AdminScreen = () => {
         <CardTitle>Lista de Usuarios</CardTitle>
         <UserList>
           {users.map(u => (
-            <UserItem key={u.id}>
+            <UserItem key={u.uid}>
               <UserMain>
                 <UserName>{u.name}</UserName>
                 <UserRole>{u.role}</UserRole>
