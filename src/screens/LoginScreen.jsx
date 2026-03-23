@@ -32,7 +32,7 @@ const Title = styled.h1`
 `;
 
 const Subtitle = styled.p`
-  color: #666;
+  color: #000;
   font-size: 14px;
   margin-bottom: 32px;
   text-align: center;
@@ -82,18 +82,7 @@ const Button = styled.button`
   }
 `;
 
-const SeedButton = styled.button`
-  background: transparent;
-  color: #1A1A1A;
-  border: 1px solid #1A1A1A;
-  border-radius: 12px;
-  width: 100%;
-  padding: 16px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 12px;
-`;
+
 
 const LoginScreen = () => {
   const { login, addUser } = useAuth();
@@ -106,25 +95,13 @@ const LoginScreen = () => {
     e.preventDefault();
     setLoading(true);
     const res = await login(email.trim(), password.trim());
-    if (res.success) {
-      navigate('/');
-    } else {
+    if (!res.success) {
       alert(res.message);
       setLoading(false);
     }
   };
 
-  const handleSeed = async () => {
-    const res = await addUser('guardia@test.com', '123456', 'Guardia de Prueba', 'guardia');
-    if (res.success) alert('Guardia creado: guardia@test.com / 123456');
-    else alert(res.message);
-  };
 
-  const handleSeedAdmin = async () => {
-    const res = await addUser('admin@test.com', '123456', 'Admin de Prueba', 'admin');
-    if (res.success) alert('Admin creado: admin@test.com / 123456');
-    else alert(res.message);
-  };
 
   return (
     <Container>
@@ -153,10 +130,6 @@ const LoginScreen = () => {
             />
           </InputGroup>
           <Button type="submit">Ingresar</Button>
-          <SeedButton type="button" onClick={handleSeed}>Crear Guardia de Prueba</SeedButton>
-          <SeedButton type="button" onClick={handleSeedAdmin} style={{ marginTop: '8px', borderColor: '#007bff', color: '#007bff' }}>
-            Crear Administrador de Prueba
-          </SeedButton>
         </form>
       </Card>
     </Container>

@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
-import { useNavigate } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
+import { useNavigate, useLocation as useRouterLocation } from 'react-router-dom';
+import { ChevronLeft, Navigation as NavigationIcon } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { doc, onSnapshot, collection, query, orderBy, where } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { useLocation } from '../context/LocationContext';
 
 // Fix for default marker icons in Leaflet + Webpack/Vite
@@ -70,18 +72,139 @@ const RecenterBtn = styled.button`
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 `;
 
-const ChangeView = ({ center }) => {
+const MapEvents = ({ onDrag, shouldFollow, center }) => {
   const map = useMap();
-  if (center) map.setView(center, 15);
+  
+  useEffect(() => {
+    if (shouldFollow && center) {
+      map.setView(center, map.getZoom());
+    }
+  }, [center, shouldFollow, map]);
+
+  useEffect(() => {
+    const handleDrag = () => {
+      onDrag();
+    };
+    map.on('dragstart', handleDrag);
+    return () => map.off('dragstart', handleDrag);
+  }, [map, onDrag]);
+
   return null;
-}
+};
 
 const MapScreen = () => {
   const navigate = useNavigate();
-  const { location, locationHistory, scannedPoints } = useLocation();
+  const routerLocation = useRouterLocation();
+  const { location, locationHistory, scannedPoints, currentRoundId } = useLocation();
+  
+  const monitorGuardId = routerLocation.state?.guardId;
+  const [monitorData, setMonitorData] = useState(null);
+  const [monitorPath, setMonitorPath] = useState([]);
+  const [monitorScans, setMonitorScans] = useState([]);
+  
+  const [shouldFollow, setShouldFollow] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
 
-  const currentCoords = location ? [location.coords.latitude, location.coords.longitude] : [-33.4489, -70.6693]; // Default Santiago
-  const polylinePositions = locationHistory.map(p => [p.lat, p.lng]);
+  useEffect(() => {
+    if (!monitorGuardId) return;
+
+    // Listen to guard's current position and active round
+    const unsubUser = onSnapshot(doc(db, 'users', monitorGuardId), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setMonitorData(data);
+      }
+    });
+
+    return () => unsubUser();
+  }, [monitorGuardId]);
+
+  useEffect(() => {
+    if (!monitorGuardId || !monitorData?.activeRoundId) {
+      setMonitorPath([]);
+      return;
+    }
+
+    // Listen to the active round's path
+    const q = query(
+      collection(db, 'rounds', monitorData.activeRoundId, 'path'),
+      orderBy('timestamp', 'asc')
+    );
+    const unsubPath = onSnapshot(q, (snap) => {
+      setMonitorPath(snap.docs.map(d => ({ lat: d.data().lat, lng: d.data().lng })));
+    }, (err) => {
+      if (err.code !== 'permission-denied') console.error("Error fetching monitor path:", err);
+    });
+
+    return () => unsubPath();
+  }, [monitorGuardId, monitorData?.activeRoundId]);
+
+  useEffect(() => {
+    if (!monitorGuardId || !monitorData?.activeRoundId) {
+      setMonitorScans([]);
+      return;
+    }
+
+    // Listen to scanned points for this specific round
+    const q = query(
+      collection(db, 'scannedPoints'),
+      where('roundId', '==', monitorData.activeRoundId)
+    );
+    const unsubScans = onSnapshot(q, (snap) => {
+      const s = snap.docs.map(d => ({ 
+        id: d.id, 
+        lat: d.data().latitude, 
+        lng: d.data().longitude,
+        timestamp: d.data().timestamp 
+      }));
+      // Sort chronologically
+      setMonitorScans(s.sort((a, b) => (a.timestamp?.toMillis() || 0) - (b.timestamp?.toMillis() || 0)));
+    });
+
+    return () => unsubScans();
+  }, [monitorGuardId, monitorData?.activeRoundId]);
+
+  const currentCoords = monitorGuardId 
+    ? (monitorData?.currentLat ? [monitorData.currentLat, monitorData.currentLng] : null)
+    : (location ? [location.coords.latitude, location.coords.longitude] : null);
+
+  const defaultCenter = [-34.6037, -58.3816];
+
+  const polylinePositions = React.useMemo(() => {
+    if (monitorGuardId) {
+      return monitorPath.map(p => [p.lat, p.lng]);
+    }
+    return locationHistory.map(p => [p.lat, p.lng]);
+  }, [monitorGuardId, monitorPath, locationHistory]);
+
+  const scanPathPositions = React.useMemo(() => {
+    if (monitorGuardId) {
+      return monitorScans.map(s => [s.lat, s.lng]);
+    }
+    // Personal mode: filter current scannedPoints by the active roundId
+    if (!currentRoundId) return [];
+    
+    const activePoints = scannedPoints
+      .filter(p => p.roundId === currentRoundId)
+      .sort((a, b) => (a.timestamp?.toMillis() || 0) - (b.timestamp?.toMillis() || 0));
+    
+    return activePoints.map(p => [p.latitude, p.longitude]);
+  }, [monitorGuardId, monitorScans, scannedPoints, currentRoundId]);
+
+  const displayedScannedPoints = React.useMemo(() => {
+    if (monitorGuardId) return monitorScans;
+    if (!currentRoundId) return [];
+    return scannedPoints.filter(p => p.roundId === currentRoundId);
+  }, [monitorGuardId, monitorScans, scannedPoints, currentRoundId]);
+
+  const handleDrag = React.useCallback(() => {
+    setShouldFollow(false);
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMapReady(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <Container>
@@ -89,37 +212,59 @@ const MapScreen = () => {
         <BackBtn onClick={() => navigate(-1)}>
           <ChevronLeft size={20} />
         </BackBtn>
-        <Title>Ubicación Real-Time</Title>
+        <Title>{monitorGuardId ? `Monitoreo: ${monitorData?.name || 'Guardia'}` : 'Ubicación Real-Time'}</Title>
       </Header>
 
-      <MapWrapper>
-        <MapContainer center={currentCoords} zoom={15} style={{ height: '100%', width: '100%' }}>
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          />
-          
-          <ChangeView center={currentCoords} />
+      <MapWrapper style={{ position: 'relative', background: '#e9ecef', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {!mapReady ? (
+          <div>Cargando mapa...</div>
+        ) : (
+          <MapContainer 
+            center={currentCoords || defaultCenter} 
+            zoom={15} 
+            style={{ height: '100%', width: '100%' }}
+          >
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            />
+            
+            {currentCoords && (
+              <MapEvents 
+                center={currentCoords}
+                shouldFollow={shouldFollow}
+                onDrag={handleDrag}
+              />
+            )}
 
-          {location && (
-             <Marker position={currentCoords}>
-               <Popup>Ubicación Actual</Popup>
-             </Marker>
-          )}
+            {currentCoords && (
+               <Marker position={currentCoords}>
+                 <Popup>{monitorGuardId ? 'Guardia' : 'Tu ubicación'}</Popup>
+               </Marker>
+            )}
 
-          {locationHistory.length > 1 && (
-            <Polyline positions={polylinePositions} color="#1A1A1A" weight={4} opacity={0.7} />
-          )}
+            {polylinePositions.length > 1 && (
+              <Polyline positions={polylinePositions} color="#1A1A1A" weight={3} opacity={0.4} />
+            )}
 
-          {scannedPoints.map((point) => (
-            <Marker key={point.id} position={[point.latitude, point.longitude]}>
-              <Popup>Punto: {point.data}</Popup>
-            </Marker>
-          ))}
-        </MapContainer>
+            {scanPathPositions.length > 1 && (
+              <Polyline positions={scanPathPositions} color="#4CAF50" weight={5} dashArray="10, 10" />
+            )}
+
+            {displayedScannedPoints.map((point) => (
+              <Marker key={point.id} position={monitorGuardId ? [point.lat, point.lng] : [point.latitude, point.longitude]}>
+                <Popup>Punto: {point.data || 'Escaneado'}</Popup>
+              </Marker>
+            ))}
+          </MapContainer>
+        )}
+        
+        {mapReady && !shouldFollow && (
+          <RecenterBtn onClick={() => setShouldFollow(true)}>
+            Recentrar y Seguir
+          </RecenterBtn>
+        )}
       </MapWrapper>
-
-      <RecenterBtn onClick={() => {}}>Recentrar</RecenterBtn>
     </Container>
   );
 };

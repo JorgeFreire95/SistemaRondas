@@ -1,7 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
-import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, MapPin, Calendar, Clock } from 'lucide-react';
+import { useNavigate, useLocation as useRouterLocation } from 'react-router-dom';
+import { ChevronLeft, MapPin, Calendar, Clock, User } from 'lucide-react';
 import { useLocation } from '../context/LocationContext';
 
 const Container = styled.div`
@@ -73,7 +73,7 @@ const PointData = styled.h3`
 
 const GuardLabel = styled.p`
   font-size: 12px;
-  color: #666;
+  color: #000;
   margin: 0 0 12px 0;
 `;
 
@@ -87,12 +87,18 @@ const MetaItem = styled.div`
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #888;
+  color: #000;
 `;
 
 const ReportsScreen = () => {
   const navigate = useNavigate();
+  const routerLocation = useRouterLocation();
   const { scannedPoints } = useLocation();
+  const filterGuardId = routerLocation.state?.guardId;
+
+  const points = filterGuardId 
+    ? scannedPoints.filter(p => p.guardId === filterGuardId)
+    : scannedPoints;
 
   return (
     <Container>
@@ -100,11 +106,13 @@ const ReportsScreen = () => {
         <BackBtn onClick={() => navigate(-1)}>
           <ChevronLeft size={20} />
         </BackBtn>
-        <Title>Historial de Rondas</Title>
+        <Title>
+          {filterGuardId ? 'Historial del Guardia' : 'Historial de Rondas'}
+        </Title>
       </Header>
 
       <List>
-        {scannedPoints.map((point) => (
+        {points.map((point) => (
           <ReportItem key={point.id}>
             <IconBox>
               <MapPin size={24} color="#4CAF50" />

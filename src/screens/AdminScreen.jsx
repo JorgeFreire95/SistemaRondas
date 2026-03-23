@@ -63,6 +63,7 @@ const Input = styled.input`
   margin-bottom: 15px;
   font-size: 14px;
   outline: none;
+  color: #000000;
 
   &:focus {
     border-color: #1A1A1A;
@@ -129,14 +130,14 @@ const UserName = styled.span`
 
 const UserRole = styled.span`
   font-size: 11px;
-  color: #888;
+  color: #000;
   font-weight: 700;
   text-transform: uppercase;
 `;
 
 const UserEmail = styled.span`
   font-size: 12px;
-  color: #666;
+  color: #000;
 `;
 
 const AdminScreen = () => {
@@ -150,13 +151,15 @@ const AdminScreen = () => {
 
   useEffect(() => {
     const q = query(collection(db, 'users'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const unsub = onSnapshot(collection(db, 'users'), (snap) => {
+      setUsers(snap.docs.map(doc => ({ uid: doc.id, ...doc.data() })));
+    }, (err) => {
+      if (err.code !== 'permission-denied') console.error("Error fetching users:", err);
     });
-    return unsubscribe;
+    return unsub;
   }, []);
 
-  const handleCreate = async () => {
+  const handleCreateUser = async () => {
     if (!email || !name) return alert('Completa los campos');
     const res = await addUser(email, password, name, role);
     if (res.success) {
@@ -190,7 +193,7 @@ const AdminScreen = () => {
             ))}
           </RoleSelector>
 
-          <CreateBtn onClick={handleCreate}>
+          <CreateBtn onClick={handleCreateUser}>
             <UserPlus size={18} />
             Crear Usuario
           </CreateBtn>

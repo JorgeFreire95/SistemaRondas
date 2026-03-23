@@ -16,6 +16,7 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setLoading(true);
       if (firebaseUser) {
         try {
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
@@ -57,10 +58,10 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => signOut(auth);
 
-  const addUser = async (email, password, name, role) => {
+  const addUser = async (email, password, name, role, extraData = {}) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const newUser = { name, role, email };
+      const newUser = { name, role, email, ...extraData };
       await setDoc(doc(db, 'users', userCredential.user.uid), newUser);
       return { success: true };
     } catch (error) {
