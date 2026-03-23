@@ -19,36 +19,40 @@ Sistema de gestión y monitoreo de rondas de seguridad en tiempo real. Este proy
 *   **Escaneo con Preguntas**: Cada punto de marcaje puede incluir una pregunta de verificación (ej: "¿Bodega cerrada?") que debe responderse antes de completar el escaneo.
 *   **Seguimiento GPS**: Tracking automático durante la ronda para registrar el recorrido exacto.
 
+### 💼 Perfiles de Monitoreo (Supervisor & Cliente)
+*   **Acceso a Reportes**: Ambos roles pueden visualizar el historial de rondas y generar **Reportes PDF** profesionales.
+*   **Seguimiento de Guardias**: Vista de "solo lectura" de la gestión de personal para monitorear quién está "EN RONDA" y ver su ubicación en el mapa.
+*   **Gestión Administrativa**: Los Administradores cuentan con pantallas dedicadas para registrar y asignar supervisores y clientes a sus respectivas instalaciones.
+
 ### ⚙️ Perfil Administrador (Control Total)
-*   **Gestión de Instalaciones**: Creación, edición y eliminación de instalaciones.
-*   **Configuración de Puntos**: Registro de puntos de marcaje vinculando nombres con códigos QR/Barras específicos.
-*   **Gestión de Horarios**: Asignación de bloques horarios de ronda para cada instalación.
-*   **Gestión de Guardias**: Registro completo de guardias (email, RUT, nombre) y asignación a instalaciones.
+*   **Rondas Administrativas**: Facultad para realizar rondas en cualquier instalación seleccionando manualmente el horario y controlando el inicio/término.
+*   **Generación de Reportes PDF**: Sistema avanzado de reportes con filtros por fecha, instalación y usuario, incluyendo **atribución automática de roles** (Adm., Superv., Cli., Guardia).
+*   **Configuración Global**: CRUD completo de instalaciones, puntos de marcaje, horarios y gestión unificada de personal y usuarios.
 *   **Monitoreo en Tiempo Real**: 
-    *   **Estado de Guardia**: Indicadores visuales con puntos pulsantes ("EN RONDA") en la lista de guardias.
-    *   **Mapa en Vivo**: Visualización en tiempo real de la ubicación de todos los guardias activos sobre el mapa.
+    *   **Estado de Guardia**: Indicadores visuales ("EN RONDA") y mapa en vivo con seguimiento geoespacial.
 
 ### 🔐 Seguridad y Rendimiento
-*   **Cierre de Sesión Automático**: Si la aplicación se cierra de forma forzosa (Force Close), la sesión se borra automáticamente para mayor seguridad (`browserSessionPersistence`).
-*   **Manejo de Errores Silencioso**: Control robusto de permisos de Firestore para evitar errores de consola durante el cierre de sesión.
+*   **Cierre de Sesión Automático**: Persistencia de sesión robusta (`browserSessionPersistence`) y manejo seguro de cierre de procesos.
+*   **Rutas Protegidas**: Sistema de navegación seguro que valida roles antes de permitir el acceso a secciones críticas.
 
 ## 🛠️ Instalación y Desarrollo
 
 1.  **Instalar dependencias**: `npm install`
 2.  **Modo desarrollo (Web)**: `npm run dev`
-3.  **Sincronización Android**: `npm run build && npx cap sync android`
+3.  **Sincronización Android**: `npm run build && npx cap sync`
 4.  **Abrir Android Studio**: `npx cap open android`
 
 ## 📁 Estructura del Proyecto
 
 *   `src/context/`: Lógica centralizada (`AuthContext`, `LocationContext`).
 *   `src/screens/`:
-    *   `HomeScreen.jsx`: Dashboard dinámico según el perfil.
-    *   `RoundScreen.jsx`: Ejecución de rondas y checklist de puntos.
-    *   `ScannerScreen.jsx`: Visor de cámara optimizada para escaneo rápido.
-    *   `InstallationsScreen.jsx`: CRUD de instalaciones y configuración.
+    *   `HomeScreen.jsx`: Dashboard dinámico multinivel.
+    *   `AdminRoundsScreen.jsx` & `AdminSchedulesScreen.jsx`: Selección y ejecución de rondas administrativas.
+    *   `ReportsScreen.jsx` & `PDFScreen.jsx`: Historial visual y motor de generación de reportes PDF.
+    *   `SupervisorsScreen.jsx` & `ClientsScreen.jsx`: Gestión de roles de monitoreo.
     *   `GuardsScreen.jsx`: Gestión de personal y monitoreo de estado.
     *   `MapScreen.jsx`: Monitoreo geoespacial en vivo.
+    *   `ScannerScreen.jsx`: Visor de cámara para escaneo rápido.
 *   `src/config/`: Conexión de Firebase y estilos globales.
 
 ---

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, UserPlus, Shield, MapPin, Mail, CreditCard, Building, Trash2, Edit2, History, X, Navigation as NavigationIcon, Search } from 'lucide-react';
+import { ChevronLeft, UserPlus, Shield, MapPin, Mail, CreditCard, Building, Trash2, Edit2, X, Navigation as NavigationIcon, Search, UserCheck } from 'lucide-react';
 import { collection, query, onSnapshot, where, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
@@ -114,7 +114,7 @@ const CreateBtn = styled.button`
   cursor: pointer;
 `;
 
-const GuardItem = styled.div`
+const ClientItem = styled.div`
   background: white;
   padding: 16px;
   border-radius: 12px;
@@ -125,23 +125,23 @@ const GuardItem = styled.div`
   align-items: center;
 `;
 
-const GuardInfo = styled.div`
+const ClientInfo = styled.div`
   display: flex;
   flex-direction: column;
 `;
 
-const GuardName = styled.div`
+const ClientName = styled.div`
   font-weight: 700;
   color: #1A1A1A;
 `;
 
-const GuardSub = styled.div`
+const ClientSub = styled.div`
   font-size: 12px;
   color: #000;
   margin-top: 4px;
 `;
 
-const GuardActions = styled.div`
+const ClientActions = styled.div`
   display: flex;
   gap: 8px;
 `;
@@ -193,42 +193,11 @@ const ModalHeader = styled.div`
   margin-bottom: 20px;
 `;
 
-const Badge = styled.div`
-  background: #E8F5E9;
-  color: #2E7D32;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 10px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border: 1px solid #C8E6C9;
-
-  &::before {
-    content: '';
-    width: 6px;
-    height: 6px;
-    background: #4CAF50;
-    border-radius: 50%;
-    display: inline-block;
-    animation: pulse 1.5s infinite;
-  }
-
-  @keyframes pulse {
-    0% { transform: scale(0.9); opacity: 0.7; }
-    50% { transform: scale(1.2); opacity: 1; }
-    100% { transform: scale(0.9); opacity: 0.7; }
-  }
-`;
-
-const GuardsScreen = () => {
+const ClientsScreen = () => {
   const navigate = useNavigate();
-  const { addUser, user } = useAuth();
+  const { addUser } = useAuth();
   const [installations, setInstallations] = useState([]);
-  const [guards, setGuards] = useState([]);
+  const [clients, setClients] = useState([]);
 
   // Form states
   const [name, setName] = useState('');
@@ -240,7 +209,7 @@ const GuardsScreen = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   // Editing state
-  const [editingGuard, setEditingGuard] = useState(null);
+  const [editingClient, setEditingClient] = useState(null);
   const [editName, setEditName] = useState('');
   const [editRut, setEditRut] = useState('');
   const [editAddress, setEditAddress] = useState('');
@@ -255,29 +224,29 @@ const GuardsScreen = () => {
       if (err.code !== 'permission-denied') console.error("Error fetching installations:", err);
     });
 
-    // Listen to guards
-    const qGuards = query(collection(db, 'users'), where('role', '==', 'guardia'));
-    const unsubGuards = onSnapshot(qGuards, (snap) => {
-      setGuards(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    // Listen to clients
+    const qCli = query(collection(db, 'users'), where('role', '==', 'cliente'));
+    const unsubCli = onSnapshot(qCli, (snap) => {
+      setClients(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (err) => {
-      if (err.code !== 'permission-denied') console.error("Error fetching guards:", err);
+      if (err.code !== 'permission-denied') console.error("Error fetching clients:", err);
     });
 
     return () => {
       unsubInst();
-      unsubGuards();
+      unsubCli();
     };
   }, []);
 
-  const sortedGuards = React.useMemo(() => {
-    let filtered = [...guards];
+  const sortedAndFilteredClients = React.useMemo(() => {
+    let filtered = [...clients];
 
     if (searchTerm) {
       const lowSearch = searchTerm.toLowerCase();
-      filtered = filtered.filter(g => 
-        (g.name || '').toLowerCase().includes(lowSearch) ||
-        (g.email || '').toLowerCase().includes(lowSearch) ||
-        (g.rut || '').toLowerCase().includes(lowSearch)
+      filtered = filtered.filter(c => 
+        (c.name || '').toLowerCase().includes(lowSearch) ||
+        (c.email || '').toLowerCase().includes(lowSearch) ||
+        (c.rut || '').toLowerCase().includes(lowSearch)
       );
     }
 
@@ -287,14 +256,14 @@ const GuardsScreen = () => {
       if (sortBy === 'asc') return nameA.localeCompare(nameB);
       return nameB.localeCompare(nameA);
     });
-  }, [guards, sortBy, searchTerm]);
+  }, [clients, sortBy, searchTerm]);
 
-  const handleCreateGuard = async () => {
+  const handleCreateClient = async () => {
     if (!name || !rut || !address || !email || !selectedInst) {
       return alert('Completa todos los campos');
     }
 
-    const res = await addUser(email, rut, name, 'guardia', {
+    const res = await addUser(email, rut, name, 'cliente', {
       rut,
       address,
       assignedInstallationId: selectedInst
@@ -306,17 +275,17 @@ const GuardsScreen = () => {
       setAddress('');
       setEmail('');
       setSelectedInst('');
-      alert('Guardia registrado con éxito');
+      alert('Cliente registrado con éxito');
     } else {
       alert('Error: ' + res.message);
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('¿Estás seguro de eliminar este guardia?')) {
+    if (window.confirm('¿Estás seguro de eliminar este cliente?')) {
       try {
         await deleteDoc(doc(db, 'users', id));
-        alert('Guardia eliminado');
+        alert('Cliente eliminado');
       } catch (err) {
         console.error(err);
         alert('Error al eliminar');
@@ -324,25 +293,25 @@ const GuardsScreen = () => {
     }
   };
 
-  const openEdit = (g) => {
-    setEditingGuard(g);
-    setEditName(g.name || '');
-    setEditRut(g.rut || '');
-    setEditAddress(g.address || '');
-    setEditEmail(g.email || '');
-    setEditInst(g.assignedInstallationId || '');
+  const openEdit = (c) => {
+    setEditingClient(c);
+    setEditName(c.name || '');
+    setEditRut(c.rut || '');
+    setEditAddress(c.address || '');
+    setEditEmail(c.email || '');
+    setEditInst(c.assignedInstallationId || '');
   };
 
   const handleUpdate = async () => {
     try {
-      await updateDoc(doc(db, 'users', editingGuard.id), {
+      await updateDoc(doc(db, 'users', editingClient.id), {
         name: editName,
         rut: editRut,
         address: editAddress,
         email: editEmail,
         assignedInstallationId: editInst
       });
-      setEditingGuard(null);
+      setEditingClient(null);
       alert('Perfil actualizado');
     } catch (err) {
       console.error(err);
@@ -356,52 +325,50 @@ const GuardsScreen = () => {
         <BackBtn onClick={() => navigate(-1)}>
           <ChevronLeft size={20} />
         </BackBtn>
-        <Title>Gestión de Guardias</Title>
+        <Title>Gestión de Clientes</Title>
       </Header>
 
       <Content>
-        {(user?.role !== 'supervisor' && user?.role !== 'cliente') && (
-          <Card>
-            <CardTitle>Nuevo Guardia</CardTitle>
-            
-            <InputWrapper>
-              <IconWrapper><Shield size={18} /></IconWrapper>
-              <Input placeholder="Nombre Completo" value={name} onChange={e => setName(e.target.value)} />
-            </InputWrapper>
+        <Card>
+          <CardTitle>Nuevo Cliente</CardTitle>
+          
+          <InputWrapper>
+            <IconWrapper><Shield size={18} /></IconWrapper>
+            <Input placeholder="Nombre o Razón Social" value={name} onChange={e => setName(e.target.value)} />
+          </InputWrapper>
 
-            <InputWrapper>
-              <IconWrapper><CreditCard size={18} /></IconWrapper>
-              <Input placeholder="RUT" value={rut} onChange={e => setRut(e.target.value)} />
-            </InputWrapper>
+          <InputWrapper>
+            <IconWrapper><CreditCard size={18} /></IconWrapper>
+            <Input placeholder="RUT" value={rut} onChange={e => setRut(e.target.value)} />
+          </InputWrapper>
 
-            <InputWrapper>
-              <IconWrapper><MapPin size={18} /></IconWrapper>
-              <Input placeholder="Dirección de domicilio" value={address} onChange={e => setAddress(e.target.value)} />
-            </InputWrapper>
+          <InputWrapper>
+            <IconWrapper><MapPin size={18} /></IconWrapper>
+            <Input placeholder="Dirección Comercial" value={address} onChange={e => setAddress(e.target.value)} />
+          </InputWrapper>
 
-            <InputWrapper>
-              <IconWrapper><Mail size={18} /></IconWrapper>
-              <Input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
-            </InputWrapper>
+          <InputWrapper>
+            <IconWrapper><Mail size={18} /></IconWrapper>
+            <Input placeholder="Email de contacto" value={email} onChange={e => setEmail(e.target.value)} />
+          </InputWrapper>
 
-            <InputWrapper>
-              <IconWrapper><Building size={18} /></IconWrapper>
-              <Select value={selectedInst} onChange={e => setSelectedInst(e.target.value)}>
-                <option value="">Selecciona Instalación</option>
-                {installations.map(inst => (
-                  <option key={inst.id} value={inst.id}>{inst.name}</option>
-                ))}
-              </Select>
-            </InputWrapper>
-            
-            <CreateBtn onClick={handleCreateGuard}>
-              <UserPlus size={18} />
-              Registrar Guardia
-            </CreateBtn>
-          </Card>
-        )}
+          <InputWrapper>
+            <IconWrapper><Building size={18} /></IconWrapper>
+            <Select value={selectedInst} onChange={e => setSelectedInst(e.target.value)}>
+              <option value="">Selecciona Instalación</option>
+              {installations.map(inst => (
+                <option key={inst.id} value={inst.id}>{inst.name}</option>
+              ))}
+            </Select>
+          </InputWrapper>
+          
+          <CreateBtn onClick={handleCreateClient}>
+            <UserPlus size={18} />
+            Registrar Cliente
+          </CreateBtn>
+        </Card>
 
-        <CardTitle style={{ marginBottom: '15px' }}>Guardias Registrados</CardTitle>
+        <CardTitle style={{ marginBottom: '15px' }}>Clientes Registrados</CardTitle>
         
         <div style={{ position: 'relative', marginBottom: '15px' }}>
           <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#888' }} />
@@ -426,52 +393,46 @@ const GuardsScreen = () => {
             </select>
           </div>
         </div>
+
         <div>
-          {sortedGuards.map(g => {
-            const inst = installations.find(i => i.id === g.assignedInstallationId);
+          {sortedAndFilteredClients.map(c => {
+            const inst = installations.find(i => i.id === c.assignedInstallationId);
             return (
-              <GuardItem key={g.id}>
-                <GuardInfo>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                <GuardName>{g.name}</GuardName>
-                {g.activeRoundId && <Badge>En Ronda</Badge>}
-              </div>
-                  <GuardSub>{g.email} | RUT: {g.rut}</GuardSub>
-                  {inst && <GuardSub>Asignado a: <strong>{inst.name}</strong></GuardSub>}
-                </GuardInfo>
-                <GuardActions>
-                  <ActionBtn onClick={() => navigate('/map', { state: { guardId: g.id } })}>
-                    <NavigationIcon size={18} />
+              <ClientItem key={c.id}>
+                <ClientInfo>
+                  <ClientName>{c.name}</ClientName>
+                  <ClientSub>{c.email} | RUT: {c.rut}</ClientSub>
+                  {inst && <ClientSub>Asignado a: <strong>{inst.name}</strong></ClientSub>}
+                </ClientInfo>
+                <ClientActions>
+                  <ActionBtn onClick={() => openEdit(c)}>
+                    <Edit2 size={18} />
                   </ActionBtn>
-                  { (user?.role !== 'supervisor' && user?.role !== 'cliente') && (
-                    <>
-                      <ActionBtn onClick={() => openEdit(g)}>
-                        <Edit2 size={18} />
-                      </ActionBtn>
-                      <ActionBtn $variant="danger" onClick={() => handleDelete(g.id)}>
-                        <Trash2 size={18} />
-                      </ActionBtn>
-                    </>
-                  )}
-                </GuardActions>
-              </GuardItem>
+                  <ActionBtn $variant="danger" onClick={() => handleDelete(c.id)}>
+                    <Trash2 size={18} />
+                  </ActionBtn>
+                </ClientActions>
+              </ClientItem>
             );
           })}
+          {sortedAndFilteredClients.length === 0 && (
+            <div style={{ textAlign: 'center', color: '#888', padding: '20px' }}>No se encontraron clientes</div>
+          )}
         </div>
       </Content>
 
-      {editingGuard && (
-        <ModalOverlay onClick={() => setEditingGuard(null)}>
+      {editingClient && (
+        <ModalOverlay onClick={() => setEditingClient(null)}>
           <Modal onClick={e => e.stopPropagation()}>
             <ModalHeader>
-              <CardTitle style={{ marginBottom: 0 }}>Editar Guardia</CardTitle>
-              <ActionBtn onClick={() => setEditingGuard(null)}>
+              <CardTitle style={{ marginBottom: 0 }}>Editar Cliente</CardTitle>
+              <ActionBtn onClick={() => setEditingClient(null)}>
                 <X size={20} />
               </ActionBtn>
             </ModalHeader>
             <InputWrapper>
               <IconWrapper><Shield size={18} /></IconWrapper>
-              <Input placeholder="Nombre Completo" value={editName} onChange={e => setEditName(e.target.value)} />
+              <Input placeholder="Nombre o Razón Social" value={editName} onChange={e => setEditName(e.target.value)} />
             </InputWrapper>
             <InputWrapper>
               <IconWrapper><CreditCard size={18} /></IconWrapper>
@@ -502,4 +463,4 @@ const GuardsScreen = () => {
   );
 };
 
-export default GuardsScreen;
+export default ClientsScreen;

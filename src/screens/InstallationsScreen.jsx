@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, updateDoc, orderBy, where } from 'firebase/firestore';
 import { db, storage } from '../config/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { ChevronLeft, Building, MapPin, Trash2, Edit2, Clock, X, Plus } from 'lucide-react';
+import { ChevronLeft, Building, MapPin, Trash2, Edit2, Clock, X, Plus, Search } from 'lucide-react';
 
 const Container = styled.div`
   display: flex;
@@ -198,20 +198,54 @@ const IconButton = styled.button`
   align-items: center;
 `;
 
+const CHILE_REGIONS = [
+  { region: "Arica y Parinacota", communes: ["Arica", "Camarones", "Putre", "General Lagos"] },
+  { region: "Tarapacá", communes: ["Iquique", "Alto Hospicio", "Pozo Almonte", "Camiña", "Colchane", "Huara", "Pica"] },
+  { region: "Antofagasta", communes: ["Antofagasta", "Mejillones", "Sierra Gorda", "Taltal", "Calama", "Ollagüe", "San Pedro de Atacama", "Tocopilla", "María Elena"] },
+  { region: "Atacama", communes: ["Copiapó", "Caldera", "Tierra Amarilla", "Chañaral", "Diego de Almagro", "Vallenar", "Alto del Carmen", "Freirina", "Huasco"] },
+  { region: "Coquimbo", communes: ["La Serena", "Coquimbo", "Andacollo", "La Higuera", "Paiguano", "Vicuña", "Illapel", "Canela", "Los Vilos", "Salamanca", "Ovalle", "Combarbalá", "Monte Patria", "Punitaqui", "Río Hurtado"] },
+  { region: "Valparaíso", communes: ["Valparaíso", "Casablanca", "Concón", "Juan Fernández", "Puchuncaví", "Quintero", "Viña del Mar", "Isla de Pascua", "Los Andes", "Calle Larga", "Rinconada", "San Esteban", "La Ligua", "Cabildo", "Papudo", "Petorca", "Zapallar", "Quillota", "Calera", "Hijuelas", "La Cruz", "Nogales", "San Antonio", "Algarrobo", "Cartagena", "El Quisco", "El Tabo", "Santo Domingo", "San Felipe", "Catemu", "Llaillay", "Panquehue", "Putaendo", "Santa María", "Quilpué", "Limache", "Olmué", "Villa Alemana"] },
+  { region: "Metropolitana de Santiago", communes: ["Santiago", "Cerrillos", "Cerro Navia", "Conchalí", "El Bosque", "Estación Central", "Huechuraba", "Independencia", "La Cisterna", "La Florida", "La Granja", "La Pintana", "La Reina", "Las Condes", "Lo Barnechea", "Lo Espejo", "Lo Prado", "Macul", "Maipú", "Ñuñoa", "Pedro Aguirre Cerda", "Peñalolén", "Providencia", "Pudahuel", "Quilicura", "Quinta Normal", "Recoleta", "Renca", "San Joaquín", "San Miguel", "San Ramón", "Vitacura", "Puente Alto", "Pirque", "San José de Maipo", "Colina", "Lampa", "Tiltil", "San Bernardo", "Buin", "Calera de Tango", "Paine", "Melipilla", "Alhué", "Curacaví", "María Pinto", "San Pedro", "Talagante", "El Monte", "Isla de Maipo", "Padre Hurtado", "Peñaflor"] },
+  { region: "Libertador Gral. B. O'Higgins", communes: ["Rancagua", "Codegua", "Coinco", "Coltauco", "Doñihue", "Graneros", "Las Cabras", "Machalí", "Malloa", "Mostazal", "Olivar", "Peumo", "Pichidegua", "Quinta de Tilcoco", "Rengo", "Requínoa", "San Vicente", "Pichilemu", "La Estrella", "Litueche", "Marchihue", "Navidad", "Paredones", "San Fernando", "Chépica", "Chimbarongo", "Lolol", "Nancagua", "Palmilla", "Peralillo", "Placilla", "Pumanque", "Santa Cruz"] },
+  { region: "Maule", communes: ["Talca", "Constitución", "Curepto", "Empedrado", "Maule", "Pelarco", "Pencahue", "Río Claro", "San Clemente", "San Rafael", "Cauquenes", "Chanco", "Pelluhue", "Curicó", "Hualañé", "Licantén", "Molina", "Rauco", "Romeral", "Sagrada Familia", "Teno", "Vichuquén", "Linares", "Colbún", "Longaví", "Parral", "Retiro", "San Javier", "Villa Alegre", "Yerbas Buenas"] },
+  { region: "Ñuble", communes: ["Chillán", "Bulnes", "Cobquecura", "Coelemu", "Coihueco", "El Carmen", "Ninhue", "Ñiquén", "Pemuco", "Pinto", "Portezuelo", "Quillón", "Quirihue", "Ránquil", "San Carlos", "San Fabián", "San Ignacio", "San Nicolás", "Treguaco", "Yungay"] },
+  { region: "Biobío", communes: ["Concepción", "Coronel", "Chiguayante", "Florida", "Hualpén", "Hualqui", "Lota", "Penco", "San Pedro de la Paz", "Santa Juana", "Talcahuano", "Tomé", "Lebu", "Arauco", "Cañete", "Contulmo", "Curanilahue", "Los Álamos", "Tirúa", "Los Ángeles", "Antuco", "Cabrero", "Laja", "Mulchén", "Nacimiento", "Negrete", "Quilaco", "Quilleco", "San Rosendo", "Santa Bárbara", "Tucapel", "Yumbel", "Alto Biobío"] },
+  { region: "La Araucanía", communes: ["Temuco", "Carahue", "Cunco", "Curarrehue", "Freire", "Galvarino", "Gorbea", "Lautaro", "Loncoche", "Melipeuco", "Nueva Imperial", "Padre las Casas", "Perquenco", "Pitrufquén", "Pucón", "Saavedra", "Teodoro Schmidt", "Toltén", "Vilcún", "Villarrica", "Cholchol", "Angol", "Collipulli", "Curacautín", "Ercilla", "Lonquimay", "Los Sauces", "Lumaco", "Purén", "Renaico", "Traiguén", "Victoria"] },
+  { region: "Los Ríos", communes: ["Valdivia", "Corral", "Lanco", "Los Lagos", "Máfil", "Mariquina", "Paillaco", "Panguipulli", "La Unión", "Futrono", "Lago Ranco", "Río Bueno"] },
+  { region: "Los Lagos", communes: ["Puerto Montt", "Calbuco", "Cochamó", "Fresia", "Frutillar", "Los Muermos", "Llanquihue", "Maullín", "Puerto Varas", "Castro", "Ancud", "Chonchi", "Curaco de Vélez", "Dalcahue", "Puqueldón", "Queilén", "Quellón", "Quemchi", "Quinchao", "Osorno", "Puerto Octay", "Purranque", "Puyehue", "Río Negro", "San Juan de la Costa", "San Pablo", "Chaitén", "Futaleufú", "Hualaihué", "Palena"] },
+  { region: "Aysén del Gral. C. Ibañez del Campo", communes: ["Coyhaique", "Lago Verde", "Aisén", "Cisnes", "Guaitecas", "Cochrane", "O'Higgins", "Tortel", "Chile Chico", "Río Ibáñez"] },
+  { region: "Magallanes y de la Antártica Chilena", communes: ["Punta Arenas", "Laguna Blanca", "Río Verde", "San Gregorio", "Cabo de Hornos", "Antártica", "Porvenir", "Primavera", "Timaukel", "Natales", "Torres del Paine"] }
+];
+
+const Select = styled.select`
+  width: 100%;
+  padding: 12px;
+  background: #F8F9FA;
+  border: 1px solid #EEE;
+  border-radius: 10px;
+  margin-bottom: 15px;
+  font-size: 14px;
+  outline: none;
+  color: #000000;
+  &:focus { border-color: #1A1A1A; }
+`;
+
 const InstallationsScreen = () => {
   const navigate = useNavigate();
   const [installations, setInstallations] = useState([]);
   const [instName, setInstName] = useState('');
-  const [instAddress, setInstAddress] = useState('');
-  const [instComuna, setInstComuna] = useState('');
   const [instRegion, setInstRegion] = useState('');
+  const [instComuna, setInstComuna] = useState('');
+  const [instStreet, setInstStreet] = useState('');
+  const [instNumber, setInstNumber] = useState('');
 
   // Editing state
   const [editingInst, setEditingInst] = useState(null);
   const [editName, setEditName] = useState('');
-  const [editAddress, setEditAddress] = useState('');
-  const [editComuna, setEditComuna] = useState('');
   const [editRegion, setEditRegion] = useState('');
+  const [editComuna, setEditComuna] = useState('');
+  const [editStreet, setEditStreet] = useState('');
+  const [editNumber, setEditNumber] = useState('');
 
   // Sub-collections management
   const [showPointsModal, setShowPointsModal] = useState(null);
@@ -219,6 +253,9 @@ const InstallationsScreen = () => {
   const [newPoint, setNewPoint] = useState('');
   const [newPointQR, setNewPointQR] = useState('');
   const [newPointQuestion, setNewPointQuestion] = useState('');
+
+  const [sortBy, setSortBy] = useState('name'); // 'name', 'region', 'comuna'
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [showScheduleModal, setShowScheduleModal] = useState(null);
   const [schedulesList, setSchedulesList] = useState([]);
@@ -232,6 +269,27 @@ const InstallationsScreen = () => {
     });
     return unsubInst;
   }, []);
+
+  const sortedInstallations = React.useMemo(() => {
+    let filtered = [...installations];
+    
+    if (searchTerm) {
+      const lowSearch = searchTerm.toLowerCase();
+      filtered = filtered.filter(i => 
+        i.name.toLowerCase().includes(lowSearch) ||
+        i.region.toLowerCase().includes(lowSearch) ||
+        i.comuna.toLowerCase().includes(lowSearch) ||
+        i.address.toLowerCase().includes(lowSearch)
+      );
+    }
+
+    return filtered.sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'region') return a.region.localeCompare(b.region);
+      if (sortBy === 'comuna') return a.comuna.localeCompare(b.comuna);
+      return 0;
+    });
+  }, [installations, sortBy, searchTerm]);
 
   // Listen to points when modal opens
   useEffect(() => {
@@ -252,22 +310,25 @@ const InstallationsScreen = () => {
   }, [showScheduleModal]);
 
   const handleCreateInstallation = async () => {
-    if (!instName || !instAddress || !instComuna || !instRegion) {
+    if (!instName || !instRegion || !instComuna || !instStreet || !instNumber) {
       return alert('Completa todos los campos de la instalación');
     }
 
     try {
       await addDoc(collection(db, 'installations'), {
         name: instName,
-        address: instAddress,
-        comuna: instComuna,
         region: instRegion,
+        comuna: instComuna,
+        street: instStreet,
+        number: instNumber,
+        address: `${instStreet} ${instNumber}`,
         createdAt: serverTimestamp()
       });
       setInstName('');
-      setInstAddress('');
-      setInstComuna('');
       setInstRegion('');
+      setInstComuna('');
+      setInstStreet('');
+      setInstNumber('');
       alert('Instalación registrada con éxito');
     } catch (e) {
       console.error(e);
@@ -290,18 +351,21 @@ const InstallationsScreen = () => {
   const openEdit = (inst) => {
     setEditingInst(inst);
     setEditName(inst.name);
-    setEditAddress(inst.address);
-    setEditComuna(inst.comuna);
     setEditRegion(inst.region);
+    setEditComuna(inst.comuna || '');
+    setEditStreet(inst.street || inst.address?.split(' ').slice(0, -1).join(' ') || '');
+    setEditNumber(inst.number || inst.address?.split(' ').slice(-1)[0] || '');
   };
 
   const handleUpdate = async () => {
     try {
       await updateDoc(doc(db, 'installations', editingInst.id), {
         name: editName,
-        address: editAddress,
+        region: editRegion,
         comuna: editComuna,
-        region: editRegion
+        street: editStreet,
+        number: editNumber,
+        address: `${editStreet} ${editNumber}`
       });
       setEditingInst(null);
       alert('Instalación actualizada');
@@ -356,9 +420,23 @@ const InstallationsScreen = () => {
         <Card>
           <CardTitle>Nueva Instalación</CardTitle>
           <Input placeholder="Nombre de la Instalación" value={instName} onChange={e => setInstName(e.target.value)} />
-          <Input placeholder="Dirección" value={instAddress} onChange={e => setInstAddress(e.target.value)} />
-          <Input placeholder="Comuna" value={instComuna} onChange={e => setInstComuna(e.target.value)} />
-          <Input placeholder="Región" value={instRegion} onChange={e => setInstRegion(e.target.value)} />
+          
+          <Select value={instRegion} onChange={e => { setInstRegion(e.target.value); setInstComuna(''); }}>
+            <option value="">Seleccione Región</option>
+            {CHILE_REGIONS.map(r => <option key={r.region} value={r.region}>{r.region}</option>)}
+          </Select>
+
+          <Select value={instComuna} onChange={e => setInstComuna(e.target.value)} disabled={!instRegion}>
+            <option value="">Seleccione Comuna</option>
+            {instRegion && CHILE_REGIONS.find(r => r.region === instRegion)?.communes.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </Select>
+
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <Input style={{ flex: 2 }} placeholder="Dirección (Calle)" value={instStreet} onChange={e => setInstStreet(e.target.value)} />
+            <Input style={{ flex: 1 }} placeholder="Número" value={instNumber} onChange={e => setInstNumber(e.target.value)} />
+          </div>
           
           <CreateBtn onClick={handleCreateInstallation}>
             <Building size={18} />
@@ -366,9 +444,34 @@ const InstallationsScreen = () => {
           </CreateBtn>
         </Card>
 
-        <CardTitle>Instalaciones Registradas</CardTitle>
+        <CardTitle style={{ marginBottom: '15px' }}>Instalaciones Registradas</CardTitle>
+        
+        <div style={{ position: 'relative', marginBottom: '15px' }}>
+          <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#888' }} />
+          <Input 
+            placeholder="Buscar por nombre, región o comuna..." 
+            value={searchTerm} 
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{ paddingLeft: '40px', marginBottom: 0 }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: '700', color: '#666' }}>ORDENAR:</span>
+            <select 
+              value={sortBy} 
+              onChange={e => setSortBy(e.target.value)}
+              style={{ padding: '4px 8px', borderRadius: '8px', border: '1px solid #CCC', fontSize: '11px', fontWeight: '600' }}
+            >
+              <option value="name">Nombre</option>
+              <option value="region">Región</option>
+              <option value="comuna">Comuna</option>
+            </select>
+          </div>
+        </div>
         <div>
-          {installations.map(i => (
+          {sortedInstallations.map(i => (
             <InstallationItem key={i.id}>
               <InstName>{i.name}</InstName>
               <InstLoc>
@@ -403,9 +506,24 @@ const InstallationsScreen = () => {
               <ActionBtn style={{ flex: 'none' }} onClick={() => setEditingInst(null)}><X size={20}/></ActionBtn>
             </ModalHeader>
             <Input placeholder="Nombre" value={editName} onChange={e => setEditName(e.target.value)} />
-            <Input placeholder="Dirección" value={editAddress} onChange={e => setEditAddress(e.target.value)} />
-            <Input placeholder="Comuna" value={editComuna} onChange={e => setEditComuna(e.target.value)} />
-            <Input placeholder="Región" value={editRegion} onChange={e => setEditRegion(e.target.value)} />
+            
+            <Select value={editRegion} onChange={e => { setEditRegion(e.target.value); setEditComuna(''); }}>
+              <option value="">Seleccione Región</option>
+              {CHILE_REGIONS.map(r => <option key={r.region} value={r.region}>{r.region}</option>)}
+            </Select>
+
+            <Select value={editComuna} onChange={e => setEditComuna(e.target.value)} disabled={!editRegion}>
+              <option value="">Seleccione Comuna</option>
+              {editRegion && CHILE_REGIONS.find(r => r.region === editRegion)?.communes.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </Select>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <Input style={{ flex: 2 }} placeholder="Calle" value={editStreet} onChange={e => setEditStreet(e.target.value)} />
+              <Input style={{ flex: 1 }} placeholder="N°" value={editNumber} onChange={e => setEditNumber(e.target.value)} />
+            </div>
+
             <CreateBtn onClick={handleUpdate}>Actualizar</CreateBtn>
           </Modal>
         </ModalOverlay>

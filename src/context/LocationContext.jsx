@@ -12,10 +12,15 @@ export const LocationProvider = ({ children }) => {
   const [location, setLocation] = useState(null);
   const [isTracking, setIsTracking] = useState(false);
   const [currentRoundId, setCurrentRoundId] = useState(null);
+  const [roundData, setRoundData] = useState(null); // { scheduleId, roundTime }
+  const [assignedInstData, setAssignedInstData] = useState(null);
   const [locationHistory, setLocationHistory] = useState([]);
   const [scannedPoints, setScannedPoints] = useState([]);
   const [markingPoints, setMarkingPoints] = useState([]);
   const [loadingPoints, setLoadingPoints] = useState(true);
+  const [adminInstallationId, setAdminInstallationId] = useState(null);
+
+  const effectiveInstId = adminInstallationId || user?.assignedInstallationId;
 
   useEffect(() => {
     if (!user) return;
@@ -31,7 +36,7 @@ export const LocationProvider = ({ children }) => {
 
   // Global listener for marking points of the assigned installation
   useEffect(() => {
-    if (!user?.assignedInstallationId || user.assignedInstallationId === 'no-installation') {
+    if (!effectiveInstId || effectiveInstId === 'no-installation') {
       setMarkingPoints([]);
       setLoadingPoints(false);
       return;
@@ -39,7 +44,7 @@ export const LocationProvider = ({ children }) => {
 
     setLoadingPoints(true);
     const q = query(
-      collection(db, 'installations', user.assignedInstallationId, 'markingPoints'),
+      collection(db, 'installations', effectiveInstId, 'markingPoints'),
       orderBy('createdAt', 'asc')
     );
 
@@ -53,7 +58,23 @@ export const LocationProvider = ({ children }) => {
     });
 
     return unsubscribe;
-  }, [user?.assignedInstallationId]);
+  }, [effectiveInstId]);
+
+  // Global listener for assigned installation info
+  useEffect(() => {
+    if (!effectiveInstId || effectiveInstId === 'no-installation') {
+      setAssignedInstData(null);
+      return;
+    }
+
+    const unsub = onSnapshot(doc(db, 'installations', effectiveInstId), (snap) => {
+      if (snap.exists()) setAssignedInstData({ id: snap.id, ...snap.data() });
+    }, (err) => {
+      if (err.code !== 'permission-denied') console.error("Error fetching assigned inst:", err);
+    });
+
+    return unsub;
+  }, [effectiveInstId]);
 
   const addScannedPoint = async (data, extra = {}) => {
     if (location && user) {
@@ -66,8 +87,11 @@ export const LocationProvider = ({ children }) => {
           timestamp: serverTimestamp(),
           guardId: user.uid,
           guardName: user.name,
+          guardRole: user.role,
           roundId: currentRoundId || 'no-round',
-          installationId: user.assignedInstallationId || 'no-installation'
+          installationId: effectiveInstId || 'no-installation',
+          installationName: assignedInstData?.name || 'Sistema',
+          roundTime: extra.roundTime || roundData?.roundTime || null
         });
         return true;
       } catch (e) {
@@ -117,14 +141,19 @@ export const LocationProvider = ({ children }) => {
   // Effect for managing active round status
   useEffect(() => {
     if (isTracking && user) {
+      if (currentRoundId) return; // Already have a round (resuming)
+
       const startRound = async () => {
         try {
           const roundDoc = await addDoc(collection(db, 'rounds'), {
             guardId: user.uid,
             guardName: user.name,
+            guardRole: user.role,
             startTime: serverTimestamp(),
             status: 'active',
-            installationId: user.assignedInstallationId || 'no-installation'
+            installationId: effectiveInstId || 'no-installation',
+            scheduleId: roundData?.scheduleId || null,
+            roundTime: roundData?.roundTime || null
           });
           setCurrentRoundId(roundDoc.id);
           
@@ -158,8 +187,19 @@ export const LocationProvider = ({ children }) => {
       };
       clearRound();
       setCurrentRoundId(null);
+      setRoundData(null);
     }
-  }, [isTracking]);
+  }, [isTracking, currentRoundId, user]);
+
+  const startNewRound = (scheduleId, roundTime) => {
+    setRoundData({ scheduleId, roundTime });
+    setIsTracking(true);
+  };
+
+  const resumeRound = (roundId) => {
+    setCurrentRoundId(roundId);
+    setIsTracking(true);
+  };
 
   // Effect for syncing path to Firestore during an active round
   useEffect(() => {
@@ -207,7 +247,11 @@ export const LocationProvider = ({ children }) => {
         markingPoints,
         loadingPoints,
         addScannedPoint,
-        currentRoundId
+        currentRoundId,
+        startNewRound,
+        resumeRound,
+        setAdminInstallationId,
+        effectiveInstId
       }}
     >
       {children}

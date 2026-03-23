@@ -13,11 +13,14 @@ import {
   Building,
   CheckCircle2,
   Circle,
-  Clock
+  Clock,
+  List,
+  Briefcase,
+  UserCheck
 } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
-import { doc, onSnapshot, collection, query, orderBy } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, orderBy, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
@@ -208,7 +211,8 @@ const CheckText = styled.span`
 
 const HomeScreen = () => {
   const { user, logout } = useAuth();
-  const { isTracking, setIsTracking, currentRoundId, scannedPoints } = useLocation();
+  const { isTracking, setIsTracking, currentRoundId, scannedPoints, resumeRound } = useLocation();
+  const [isResuming, setIsResuming] = useState(false);
   const navigate = useNavigate();
   const [assignedInst, setAssignedInst] = useState(null);
   const [markingPoints, setMarkingPoints] = useState([]);
@@ -248,6 +252,31 @@ const HomeScreen = () => {
   }, [user]);
 
   // Round summary
+  const handleResume = async () => {
+    const roundId = user?.activeRoundId || currentRoundId;
+    if (!roundId) return;
+    setIsResuming(true);
+    try {
+      const roundSnap = await getDoc(doc(db, 'rounds', roundId));
+      if (roundSnap.exists()) {
+        const data = roundSnap.data();
+        resumeRound(roundId);
+        if (data.scheduleId) {
+          navigate(`/round/${data.scheduleId}?time=${data.roundTime || ''}`);
+        } else {
+          // Fallback if no scheduleId (though we are adding it now)
+          navigate('/map'); 
+        }
+      } else {
+        alert("No se encontró la ronda activa.");
+      }
+    } catch (err) {
+      console.error("Error resuming round:", err);
+    } finally {
+      setIsResuming(false);
+    }
+  };
+
   const roundScannedIds = React.useMemo(() => {
     if (!currentRoundId) return new Set();
     return new Set(scannedPoints.filter(p => p.roundId === currentRoundId).map(p => p.pointId));
@@ -274,10 +303,20 @@ const HomeScreen = () => {
       </Header>
 
       <Content>
-        {(user?.role === 'guardia' || user?.role === 'admin') && (
+        {(user?.role === 'guardia' || user?.role === 'admin' || user?.role === 'director' || user?.role === 'supervisor' || user?.role === 'cliente') && (
           <>
 
-            {!isTracking && schedules.length > 0 && (
+            {(user?.activeRoundId || isTracking) && (
+              <RoundAction onClick={handleResume} disabled={isResuming}>
+                {isResuming ? 'CARGANDO...' : (
+                  <>
+                    <Play size={20} fill="#fff" /> {isTracking ? 'CONTINUAR RONDA' : 'REANUDAR RONDA'}
+                  </>
+                )}
+              </RoundAction>
+            )}
+
+            {!isTracking && !user?.activeRoundId && schedules.length > 0 && (
               <Checklist style={{ background: '#F8F9FA', border: '1px dashed #DDD' }}>
                 <ChecklistTitle style={{ fontSize: '14px', color: '#666' }}>Próximas Rondas Programadas</ChecklistTitle>
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -335,11 +374,16 @@ const HomeScreen = () => {
           </>
         )}
 
-        {(user?.role === 'admin' || user?.role === 'director') && (
+        {(user?.role === 'admin' || user?.role === 'director' || user?.role === 'supervisor' || user?.role === 'cliente') && (
           <Grid style={{ marginTop: 16 }}>
              <MenuBtn onClick={() => navigate('/reports')}>
                 <FileText size={32} color="#1A1A1A" />
                 <MenuText>Reportes</MenuText>
+              </MenuBtn>
+
+              <MenuBtn onClick={() => navigate('/guards')}>
+                <Shield size={32} color="#1A1A1A" />
+                <MenuText>Guardias</MenuText>
               </MenuBtn>
 
               {user?.role === 'admin' && (
@@ -352,9 +396,17 @@ const HomeScreen = () => {
                     <Building size={32} color="#1A1A1A" />
                     <MenuText>Instalaciones</MenuText>
                   </MenuBtn>
-                  <MenuBtn onClick={() => navigate('/guards')}>
-                    <Shield size={32} color="#1A1A1A" />
-                    <MenuText>Guardias</MenuText>
+                  <MenuBtn onClick={() => navigate('/admin-rounds')}>
+                    <List size={32} color="#1A1A1A" />
+                    <MenuText>Rondas</MenuText>
+                  </MenuBtn>
+                  <MenuBtn onClick={() => navigate('/supervisors')}>
+                    <Briefcase size={32} color="#1A1A1A" />
+                    <MenuText>Supervisores</MenuText>
+                  </MenuBtn>
+                  <MenuBtn onClick={() => navigate('/clients')}>
+                    <UserCheck size={32} color="#1A1A1A" />
+                    <MenuText>Clientes</MenuText>
                   </MenuBtn>
                 </>
               )}

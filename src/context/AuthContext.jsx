@@ -5,47 +5,54 @@ import {
   onAuthStateChanged,
   createUserWithEmailAndPassword 
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [firebaseUser, setFirebaseUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true);
-      if (firebaseUser) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (userDoc.exists()) {
-            setUser({
-              uid: firebaseUser.uid,
-              email: firebaseUser.email,
-              ...userDoc.data()
-            });
-          } else {
-            // Documento no existe, pero el usuario está autenticado
-            setUser({
-              uid: firebaseUser.uid,
-              email: firebaseUser.email,
-              role: 'guest' // Perfil mínimo para salir del login
-            });
-          }
-        } catch (error) {
-          console.error("Error fetching user doc:", error);
-          setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role: 'error' });
-        }
-      } else {
+    const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
+      setFirebaseUser(u);
+      if (!u) {
         setUser(null);
+        setLoading(false);
       }
+    });
+    return unsubscribeAuth;
+  }, []);
+
+  useEffect(() => {
+    if (!firebaseUser) return;
+
+    setLoading(true);
+    const unsubDoc = onSnapshot(doc(db, 'users', firebaseUser.uid), (snapshot) => {
+      if (snapshot.exists()) {
+        setUser({
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          ...snapshot.data()
+        });
+      } else {
+        setUser({
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          role: 'guest'
+        });
+      }
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching user doc:", error);
+      setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role: 'error' });
       setLoading(false);
     });
 
-    return unsubscribe;
-  }, []);
+    return unsubDoc;
+  }, [firebaseUser]);
 
   const login = async (email, password) => {
     try {

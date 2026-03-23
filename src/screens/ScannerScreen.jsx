@@ -210,6 +210,7 @@ const ScannerScreen = () => {
   const returnTo = searchParams.get('returnTo');
   const { user } = useAuth();
   const { addScannedPoint, markingPoints, loadingPoints } = useLocation();
+  const roundTime = searchParams.get('time');
   const [lastData, setLastData] = useState(null);
   const [activeQuestion, setActiveQuestion] = useState(null);
   const [scanner, setScanner] = useState(null);
@@ -245,10 +246,15 @@ const ScannerScreen = () => {
       }
       setActiveQuestion(matchedPoint);
     } else {
-      const success = await addScannedPoint(trimmedCode, matchedPoint ? {
+      const success = await addScannedPoint(matchedPoint ? matchedPoint.name : trimmedCode, matchedPoint ? {
         pointId: matchedPoint.id,
-        pointName: matchedPoint.name
-      } : {});
+        pointName: matchedPoint.name,
+        qrCode: trimmedCode,
+        roundTime: roundTime
+      } : {
+        qrCode: trimmedCode,
+        roundTime: roundTime
+      });
 
       if (success) {
         if (matchedPoint) {
@@ -293,12 +299,14 @@ const ScannerScreen = () => {
       setCurrentResponse({ answer, point });
       setIsAddingObservation(true);
     } else {
-      const success = await addScannedPoint(lastData || 'SCAN', {
+      const success = await addScannedPoint(point.name, {
         pointId: point.id,
         pointName: point.name,
         question: point.question,
         answer,
-        observation: ''
+        observation: '',
+        qrCode: lastData || 'SCAN',
+        roundTime: roundTime
       });
       if (success) {
         alert("Punto marcado con éxito.");
@@ -310,12 +318,14 @@ const ScannerScreen = () => {
   const handleConfirmObservation = async () => {
     if (!observation.trim()) return alert("Por favor, ingresa una observación.");
     setIsAddingObservation(false);
-    const success = await addScannedPoint(lastData || 'SCAN', {
+    const success = await addScannedPoint(currentResponse.point.name, {
       pointId: currentResponse.point.id,
       pointName: currentResponse.point.name,
       question: currentResponse.point.question,
       answer: currentResponse.answer,
-      observation: observation
+      observation: observation,
+      qrCode: lastData || 'SCAN',
+      roundTime: roundTime
     });
     if (success) {
       alert("Punto marcado con éxito.");
@@ -385,7 +395,7 @@ const ScannerScreen = () => {
     };
 
     initScanner();
-  }, [lastData]);
+  }, [lastData, roundTime, returnTo]);
 
   return (
     <Container>

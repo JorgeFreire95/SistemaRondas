@@ -282,7 +282,7 @@ const RoundScreen = () => {
   const [searchParams] = useSearchParams();
   const roundTime = searchParams.get('time');
   const { user } = useAuth();
-  const { isTracking, setIsTracking, currentRoundId, scannedPoints, markingPoints: points, addScannedPoint } = useLocation();
+  const { isTracking, setIsTracking, currentRoundId, scannedPoints, markingPoints: points, addScannedPoint, startNewRound, effectiveInstId } = useLocation();
   const [instName, setInstName] = useState('');
   const [manualModal, setManualModal] = useState(null); // pointId if open
   const [manualCode, setManualCode] = useState('');
@@ -297,9 +297,9 @@ const RoundScreen = () => {
   }, []);
 
   useEffect(() => {
-    if (user?.assignedInstallationId) {
+    if (effectiveInstId) {
       // Fetch installation name
-      const unsub = onSnapshot(doc(db, 'installations', user.assignedInstallationId), (snap) => {
+      const unsub = onSnapshot(doc(db, 'installations', effectiveInstId), (snap) => {
         if (snap.exists()) setInstName(snap.data().name);
       }, (err) => {
         if (err.code !== 'permission-denied') console.error("Error fetching installation name:", err);
@@ -307,7 +307,7 @@ const RoundScreen = () => {
 
       return unsub;
     }
-  }, [user]);
+  }, [effectiveInstId]);
 
   // Points already scanned in THIS round
   const scannedPointIds = scannedPoints
@@ -315,7 +315,7 @@ const RoundScreen = () => {
     .map(p => p.pointId);
 
   const handleScan = (pointId) => {
-    navigate(`/scan?returnTo=/round/${scheduleId}?time=${roundTime}`);
+    navigate(`/scan?time=${roundTime}&returnTo=${encodeURIComponent(`/round/${scheduleId}?time=${roundTime}`)}`);
   };
 
   const handleManualSubmit = async () => {
@@ -327,9 +327,11 @@ const RoundScreen = () => {
         setActiveQuestion(point);
         setManualModal(null);
       } else {
-        const success = await addScannedPoint(manualCode.trim(), {
+        const success = await addScannedPoint(point.name, {
           pointId: point.id,
-          pointName: point.name
+          pointName: point.name,
+          qrCode: manualCode.trim(),
+          roundTime: roundTime
         });
         if (success) {
           alert(`Punto "${point.name}" marcado con éxito.`);
@@ -349,12 +351,14 @@ const RoundScreen = () => {
       setCurrentResponse({ answer, point });
       setIsAddingObservation(true);
     } else {
-      const success = await addScannedPoint(manualCode.trim() || 'MANUAL', {
+      const success = await addScannedPoint(point.name, {
         pointId: point.id,
         pointName: point.name,
         question: point.question,
         answer,
-        observation: ''
+        observation: '',
+        qrCode: manualCode.trim() || 'MANUAL',
+        roundTime: roundTime
       });
       if (success) {
         alert("Punto marcado con éxito.");
@@ -366,12 +370,14 @@ const RoundScreen = () => {
   const handleConfirmObservation = async () => {
     if (!observation.trim()) return alert("Por favor, ingresa una observación.");
     setIsAddingObservation(false);
-    const success = await addScannedPoint(manualCode.trim() || 'MANUAL', {
+    const success = await addScannedPoint(currentResponse.point.name, {
       pointId: currentResponse.point.id,
       pointName: currentResponse.point.name,
       question: currentResponse.point.question,
       answer: currentResponse.answer,
-      observation: observation
+      observation: observation,
+      qrCode: manualCode.trim() || 'MANUAL',
+      roundTime: roundTime
     });
     if (success) {
       alert("Punto marcado con éxito.");
@@ -394,7 +400,7 @@ const RoundScreen = () => {
         }
       }
     }
-    setIsTracking(true);
+    startNewRound(scheduleId, roundTime);
   };
 
   return (

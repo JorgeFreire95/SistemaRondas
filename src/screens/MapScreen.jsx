@@ -14,10 +14,10 @@ import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 
 let DefaultIcon = L.icon({
-    iconUrl: icon,
-    shadowUrl: iconShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41]
+  iconUrl: icon,
+  shadowUrl: iconShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41]
 });
 
 L.Marker.prototype.options.icon = DefaultIcon;
@@ -74,7 +74,7 @@ const RecenterBtn = styled.button`
 
 const MapEvents = ({ onDrag, shouldFollow, center }) => {
   const map = useMap();
-  
+
   useEffect(() => {
     if (shouldFollow && center) {
       map.setView(center, map.getZoom());
@@ -96,12 +96,14 @@ const MapScreen = () => {
   const navigate = useNavigate();
   const routerLocation = useRouterLocation();
   const { location, locationHistory, scannedPoints, currentRoundId } = useLocation();
-  
+  const monitorRoundId = routerLocation.state?.roundId;
   const monitorGuardId = routerLocation.state?.guardId;
+  const historicalGuardName = routerLocation.state?.guardName;
+
   const [monitorData, setMonitorData] = useState(null);
   const [monitorPath, setMonitorPath] = useState([]);
   const [monitorScans, setMonitorScans] = useState([]);
-  
+
   const [shouldFollow, setShouldFollow] = useState(true);
   const [mapReady, setMapReady] = useState(false);
 
@@ -120,14 +122,15 @@ const MapScreen = () => {
   }, [monitorGuardId]);
 
   useEffect(() => {
-    if (!monitorGuardId || !monitorData?.activeRoundId) {
+    const targetRoundId = monitorRoundId || monitorData?.activeRoundId;
+    if (!targetRoundId) {
       setMonitorPath([]);
       return;
     }
 
-    // Listen to the active round's path
+    // Listen to the round's path (active or historical)
     const q = query(
-      collection(db, 'rounds', monitorData.activeRoundId, 'path'),
+      collection(db, 'rounds', targetRoundId, 'path'),
       orderBy('timestamp', 'asc')
     );
     const unsubPath = onSnapshot(q, (snap) => {
@@ -137,34 +140,36 @@ const MapScreen = () => {
     });
 
     return () => unsubPath();
-  }, [monitorGuardId, monitorData?.activeRoundId]);
+  }, [monitorRoundId, monitorData?.activeRoundId]);
 
   useEffect(() => {
-    if (!monitorGuardId || !monitorData?.activeRoundId) {
+    const targetRoundId = monitorRoundId || monitorData?.activeRoundId;
+    if (!targetRoundId) {
       setMonitorScans([]);
       return;
     }
 
-    // Listen to scanned points for this specific round
+    // Listen to scanned points for this specific round (active or historical)
     const q = query(
       collection(db, 'scannedPoints'),
-      where('roundId', '==', monitorData.activeRoundId)
+      where('roundId', '==', targetRoundId)
     );
     const unsubScans = onSnapshot(q, (snap) => {
-      const s = snap.docs.map(d => ({ 
-        id: d.id, 
-        lat: d.data().latitude, 
+      const s = snap.docs.map(d => ({
+        id: d.id,
+        lat: d.data().latitude,
         lng: d.data().longitude,
-        timestamp: d.data().timestamp 
+        timestamp: d.data().timestamp,
+        pointName: d.data().pointName || d.data().data
       }));
       // Sort chronologically
       setMonitorScans(s.sort((a, b) => (a.timestamp?.toMillis() || 0) - (b.timestamp?.toMillis() || 0)));
     });
 
     return () => unsubScans();
-  }, [monitorGuardId, monitorData?.activeRoundId]);
+  }, [monitorRoundId, monitorData?.activeRoundId]);
 
-  const currentCoords = monitorGuardId 
+  const currentCoords = monitorGuardId
     ? (monitorData?.currentLat ? [monitorData.currentLat, monitorData.currentLng] : null)
     : (location ? [location.coords.latitude, location.coords.longitude] : null);
 
@@ -178,21 +183,21 @@ const MapScreen = () => {
   }, [monitorGuardId, monitorPath, locationHistory]);
 
   const scanPathPositions = React.useMemo(() => {
-    if (monitorGuardId) {
+    if (monitorGuardId || monitorRoundId) {
       return monitorScans.map(s => [s.lat, s.lng]);
     }
     // Personal mode: filter current scannedPoints by the active roundId
     if (!currentRoundId) return [];
-    
+
     const activePoints = scannedPoints
       .filter(p => p.roundId === currentRoundId)
       .sort((a, b) => (a.timestamp?.toMillis() || 0) - (b.timestamp?.toMillis() || 0));
-    
+
     return activePoints.map(p => [p.latitude, p.longitude]);
   }, [monitorGuardId, monitorScans, scannedPoints, currentRoundId]);
 
   const displayedScannedPoints = React.useMemo(() => {
-    if (monitorGuardId) return monitorScans;
+    if (monitorGuardId || monitorRoundId) return monitorScans;
     if (!currentRoundId) return [];
     return scannedPoints.filter(p => p.roundId === currentRoundId);
   }, [monitorGuardId, monitorScans, scannedPoints, currentRoundId]);
@@ -212,7 +217,11 @@ const MapScreen = () => {
         <BackBtn onClick={() => navigate(-1)}>
           <ChevronLeft size={20} />
         </BackBtn>
-        <Title>{monitorGuardId ? `Monitoreo: ${monitorData?.name || 'Guardia'}` : 'Ubicación Real-Time'}</Title>
+        <Title>
+          {monitorRoundId 
+            ? `Historial: ${historicalGuardName || 'Ronda'}` 
+            : (monitorGuardId ? `Monitoreo: ${monitorData?.name || 'Guardia'}` : 'Ubicación Real-Time')}
+        </Title>
       </Header>
 
       <MapWrapper style={{ position: 'relative', background: '#e9ecef', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -252,8 +261,8 @@ const MapScreen = () => {
             )}
 
             {displayedScannedPoints.map((point) => (
-              <Marker key={point.id} position={monitorGuardId ? [point.lat, point.lng] : [point.latitude, point.longitude]}>
-                <Popup>Punto: {point.data || 'Escaneado'}</Popup>
+              <Marker key={point.id} position={ (monitorGuardId || monitorRoundId) ? [point.lat, point.lng] : [point.latitude, point.longitude]}>
+                <Popup>Punto: {point.pointName || point.data || 'Escaneado'}</Popup>
               </Marker>
             ))}
           </MapContainer>
@@ -265,7 +274,7 @@ const MapScreen = () => {
           </RecenterBtn>
         )}
       </MapWrapper>
-    </Container>
+    </Container >
   );
 };
 
