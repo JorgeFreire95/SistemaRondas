@@ -14,6 +14,8 @@ export const LocationProvider = ({ children }) => {
   const [currentRoundId, setCurrentRoundId] = useState(null);
   const [locationHistory, setLocationHistory] = useState([]);
   const [scannedPoints, setScannedPoints] = useState([]);
+  const [markingPoints, setMarkingPoints] = useState([]);
+  const [loadingPoints, setLoadingPoints] = useState(true);
 
   useEffect(() => {
     if (!user) return;
@@ -26,6 +28,32 @@ export const LocationProvider = ({ children }) => {
     });
     return unsubscribe;
   }, [user]);
+
+  // Global listener for marking points of the assigned installation
+  useEffect(() => {
+    if (!user?.assignedInstallationId || user.assignedInstallationId === 'no-installation') {
+      setMarkingPoints([]);
+      setLoadingPoints(false);
+      return;
+    }
+
+    setLoadingPoints(true);
+    const q = query(
+      collection(db, 'installations', user.assignedInstallationId, 'markingPoints'),
+      orderBy('createdAt', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const pts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setMarkingPoints(pts);
+      setLoadingPoints(false);
+    }, (err) => {
+      setLoadingPoints(false);
+      if (err.code !== 'permission-denied') console.error("Error fetching marking points:", err);
+    });
+
+    return unsubscribe;
+  }, [user?.assignedInstallationId]);
 
   const addScannedPoint = async (data, extra = {}) => {
     if (location && user) {
@@ -176,6 +204,8 @@ export const LocationProvider = ({ children }) => {
         setIsTracking,
         locationHistory,
         scannedPoints,
+        markingPoints,
+        loadingPoints,
         addScannedPoint,
         currentRoundId
       }}

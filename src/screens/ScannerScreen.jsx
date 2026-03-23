@@ -1,14 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import styled from 'styled-components';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, Image as ImageIcon } from 'lucide-react';
-import { Html5Qrcode } from 'html5-qrcode';
-import { Camera } from '@capacitor/camera';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
 import { useLocation } from '../context/LocationContext';
 import { useAuth } from '../context/AuthContext';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { db, storage } from '../config/firebase';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { X } from 'lucide-react';
 
 const Container = styled.div`
   display: flex;
@@ -62,10 +64,10 @@ const Overlay = styled.div`
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 220px;
-  height: 220px;
+  width: 280px;
+  height: 120px;
   border: 3px solid #4CAF50;
-  border-radius: 24px;
+  border-radius: 12px;
   pointer-events: none;
   z-index: 10;
   box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.5);
@@ -107,6 +109,38 @@ const AnswerBtn = styled.button`
   &:active {
     transform: scale(0.95);
   }
+`;
+
+const ObservationModal = styled.div`
+  background: white;
+  padding: 25px;
+  border-radius: 24px;
+  width: 90%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+`;
+
+const TextArea = styled.textarea`
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  min-height: 100px;
+  font-size: 14px;
+  outline: none;
+  &:focus { border-color: #4CAF50; }
+`;
+
+const PrimaryBtn = styled.button`
+  background: #1A1A1A;
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
 `;
 
 const ModalOverlay = styled.div`
@@ -175,26 +209,15 @@ const ScannerScreen = () => {
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo');
   const { user } = useAuth();
-  const { addScannedPoint } = useLocation();
+  const { addScannedPoint, markingPoints, loadingPoints } = useLocation();
   const [lastData, setLastData] = useState(null);
-  const [markingPoints, setMarkingPoints] = useState([]);
   const [activeQuestion, setActiveQuestion] = useState(null);
   const [scanner, setScanner] = useState(null);
   const [manualCode, setManualCode] = useState('');
-
-  useEffect(() => {
-    if (!user?.assignedInstallationId) return;
-    
-    // Listen to marking points of the assigned installation
-    const q = query(
-      collection(db, 'installations', user.assignedInstallationId, 'markingPoints')
-    );
-    return onSnapshot(q, (snap) => {
-      setMarkingPoints(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (err) => {
-      if (err.code !== 'permission-denied') console.error("Error fetching marking points:", err);
-    });
-  }, [user]);
+  const [isAddingObservation, setIsAddingObservation] = useState(false);
+  const [observation, setObservation] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [currentResponse, setCurrentResponse] = useState(null); // { answer, point }
 
   const processCode = async (code) => {
     const trimmedCode = code.trim();
@@ -202,7 +225,13 @@ const ScannerScreen = () => {
 
     setLastData(trimmedCode);
     
-    // Check if this QR matches a predefined point (Super robust match)
+    if (loadingPoints) {
+      return alert('Buscando puntos en la base de datos... Reintenta en 5 segundos.');
+    }
+
+    // Check if this QR matches a predefined point
+    console.log("Scanner: Processing code", trimmedCode, "against", markingPoints.length, "points");
+
     const matchedPoint = markingPoints.find(p => {
       const dbCode = String(p.qrCode || '').trim().toLowerCase();
       const inputCode = String(trimmedCode || '').trim().toLowerCase();
@@ -210,6 +239,10 @@ const ScannerScreen = () => {
     });
     
     if (matchedPoint && matchedPoint.question) {
+      // Stop scanner to free camera for the observation photo
+      if (scanner && scanner.isScanning) {
+        scanner.stop().catch(console.error);
+      }
       setActiveQuestion(matchedPoint);
     } else {
       const success = await addScannedPoint(trimmedCode, matchedPoint ? {
@@ -220,11 +253,12 @@ const ScannerScreen = () => {
       if (success) {
         if (matchedPoint) {
            alert(`Punto detectado: ${matchedPoint.name}`);
-        } else if (markingPoints.length === 0) {
-           alert(`ERROR: No hay puntos cargados.\n\nInstalación asignada: ${user?.assignedInstallationId || 'NINGUNA'}\n\nVerifica en el panel de Administrador que el guardia tenga una instalación asignada y que esa instalación tenga puntos creados.`);
+          } else if (markingPoints.length === 0) {
+           alert(`ERROR: No hay puntos cargados.\n\nInstalación: ${user?.assignedInstallationId}\n\nDetalles técnicos: la lista de puntos está vacía. Verifica que existan puntos en la subcolección 'markingPoints' de esta instalación.`);
         } else {
            const pInfo = markingPoints.map(p => `• ${p.name}: [${p.qrCode}]`).join('\n');
-           alert(`Código "${trimmedCode}" no coincide con los puntos de esta instalación.\n\nInstalación: ${user?.assignedInstallationId}\nPuntos en base de datos:\n${pInfo}`);
+           const ptsIds = markingPoints.map(p => p.id).join(', ');
+           alert(`Código "${trimmedCode}" no coincide con los puntos.\n\nInstalación: ${user?.assignedInstallationId}\nPuntos (${markingPoints.length}):\n${pInfo}\n\nIDs: ${ptsIds}`);
         }
         
         if (returnTo) navigate(returnTo);
@@ -255,15 +289,43 @@ const ScannerScreen = () => {
   const handleAnswer = async (answer) => {
     const point = activeQuestion;
     setActiveQuestion(null);
-    await addScannedPoint(lastData, {
-      pointId: point.id,
-      pointName: point.name,
-      question: point.question,
-      answer
-    });
-    alert(`Respuesta "${answer}" guardada para: ${point.name}`);
-    if (returnTo) navigate(returnTo);
+    if (answer === 'NO') {
+      setCurrentResponse({ answer, point });
+      setIsAddingObservation(true);
+    } else {
+      const success = await addScannedPoint(lastData || 'SCAN', {
+        pointId: point.id,
+        pointName: point.name,
+        question: point.question,
+        answer,
+        observation: ''
+      });
+      if (success) {
+        alert("Punto marcado con éxito.");
+        if (returnTo) navigate(returnTo);
+      }
+    }
   };
+
+  const handleConfirmObservation = async () => {
+    if (!observation.trim()) return alert("Por favor, ingresa una observación.");
+    setIsAddingObservation(false);
+    const success = await addScannedPoint(lastData || 'SCAN', {
+      pointId: currentResponse.point.id,
+      pointName: currentResponse.point.name,
+      question: currentResponse.point.question,
+      answer: currentResponse.answer,
+      observation: observation
+    });
+    if (success) {
+      alert("Punto marcado con éxito.");
+      setObservation('');
+      setCurrentResponse(null);
+      if (returnTo) navigate(returnTo);
+    }
+  };
+
+
 
   useEffect(() => {
     const initScanner = async () => {
@@ -279,7 +341,17 @@ const ScannerScreen = () => {
         }
       }
 
-      const qrCode = new Html5Qrcode('reader');
+      const qrCode = new Html5Qrcode('reader', {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.ITF
+        ]
+      });
       setScanner(qrCode);
 
       const onScanSuccess = async (decodedText) => {
@@ -290,7 +362,7 @@ const ScannerScreen = () => {
 
       const config = {
         fps: 20,
-        aspectRatio: 1.0
+        aspectRatio: 1.77
       };
 
       try {
@@ -313,7 +385,7 @@ const ScannerScreen = () => {
     };
 
     initScanner();
-  }, [lastData, markingPoints]);
+  }, [lastData]);
 
   return (
     <Container>
@@ -341,7 +413,28 @@ const ScannerScreen = () => {
         </ModalOverlay>
       )}
 
-      {!activeQuestion && (
+      {isAddingObservation && (
+        <ModalOverlay>
+           <ObservationModal>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0 }}>Añadir Observación</h3>
+                <X size={20} onClick={() => { setIsAddingObservation(false); setCurrentResponse(null); window.location.reload(); }} style={{ cursor: 'pointer' }} />
+              </div>
+              <p style={{ margin: 0, fontSize: 13, color: '#666' }}>
+                ¿Por qué respondiste que <strong>NO</strong>?
+              </p>
+              <TextArea 
+                placeholder="Escribe los detalles aquí..."
+                value={observation}
+                onChange={(e) => setObservation(e.target.value)}
+                autoFocus
+              />
+              <PrimaryBtn onClick={handleConfirmObservation}>CONFIRMAR</PrimaryBtn>
+           </ObservationModal>
+        </ModalOverlay>
+      )}
+
+      {!activeQuestion && !isAddingObservation && !isUploading && (
         <InfoBox>
            <ManualInputWrapper>
              <StyledInput 

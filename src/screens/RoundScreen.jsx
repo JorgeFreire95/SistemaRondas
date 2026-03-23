@@ -8,10 +8,18 @@ import {
   CheckCircle2, 
   Circle,
   Building,
-  Clock
+  Clock,
+  Keyboard,
+  X,
+  Play,
+  Square
 } from 'lucide-react';
-import { db } from '../config/firebase';
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { db, storage } from '../config/firebase';
 import { collection, query, orderBy, onSnapshot, doc } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
 
@@ -128,18 +136,144 @@ const PointStatus = styled.span`
   text-transform: uppercase;
 `;
 
-const ScanBtn = styled.button`
-  background: ${props => props.$scanned ? '#F8F9FA' : '#1A1A1A'};
-  color: ${props => props.$scanned ? '#AAA' : 'white'};
+const ButtonGroup = styled.div`
+  display: flex;
+  gap: 8px;
+`;
+
+const ActionBtn = styled.button`
+  background: ${props => props.$secondary ? '#F1F3F5' : '#1A1A1A'};
+  color: ${props => props.$secondary ? '#495057' : 'white'};
   border: none;
-  padding: 10px 16px;
+  padding: 10px 12px;
   border-radius: 12px;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   display: flex;
   align-items: center;
-  gap: 8px;
-  cursor: ${props => props.$scanned ? 'default' : 'pointer'};
+  gap: 6px;
+  cursor: pointer;
+  
+  &:active {
+    transform: scale(0.95);
+  }
+`;
+
+const ModalOverlay = styled.div`
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+`;
+
+const ModalContent = styled.div`
+  background: white;
+  border-radius: 24px;
+  padding: 24px;
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+`;
+
+const QuestionModal = styled.div`
+  background: white;
+  padding: 30px;
+  border-radius: 28px;
+  text-align: center;
+  width: 90%;
+  max-width: 340px;
+  animation: slideUp 0.3s ease-out;
+`;
+
+const QuestionTitle = styled.h3`
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 25px;
+  color: #1A1A1A;
+`;
+
+const AnswerBtn = styled.button`
+  flex: 1;
+  padding: 18px;
+  border-radius: 16px;
+  border: none;
+  font-weight: 800;
+  font-size: 16px;
+  cursor: pointer;
+  background: ${props => props.$no ? '#FFF0F0' : '#E8F5E9'};
+  color: ${props => props.$no ? '#FF4D4F' : '#2E7D32'};
+  transition: transform 0.1s;
+  &:active { transform: scale(0.95); }
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`;
+
+const ModalTitle = styled.h3`
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+`;
+
+const Input = styled.input`
+  padding: 14px;
+  border: 1px solid #EEE;
+  border-radius: 12px;
+  font-size: 16px;
+  outline: none;
+  &:focus { border-color: #1A1A1A; }
+`;
+
+const PrimaryBtn = styled.button`
+  background: ${props => props.$loading ? '#DDD' : '#1A1A1A'};
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: ${props => props.$loading ? 'default' : 'pointer'};
+`;
+
+const TextArea = styled.textarea`
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #EEE;
+  border-radius: 12px;
+  min-height: 100px;
+  font-size: 14px;
+  outline: none;
+  &:focus { border-color: #1A1A1A; }
+`;
+
+const StartRoundBtn = styled.button`
+  background: ${props => props.$stop ? '#FF4D4F' : (props.$finish ? '#4CAF50' : '#1A1A1A')};
+  color: white;
+  border: none;
+  padding: 16px;
+  border-radius: 16px;
+  width: 100%;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 20px;
+  cursor: pointer;
+  
+  &:active {
+    transform: scale(0.98);
+  }
 `;
 
 const RoundScreen = () => {
@@ -148,36 +282,29 @@ const RoundScreen = () => {
   const [searchParams] = useSearchParams();
   const roundTime = searchParams.get('time');
   const { user } = useAuth();
-  const { isTracking, setIsTracking, currentRoundId, scannedPoints } = useLocation();
-  const [points, setPoints] = useState([]);
+  const { isTracking, setIsTracking, currentRoundId, scannedPoints, markingPoints: points, addScannedPoint } = useLocation();
   const [instName, setInstName] = useState('');
+  const [manualModal, setManualModal] = useState(null); // pointId if open
+  const [manualCode, setManualCode] = useState('');
+  const [activeQuestion, setActiveQuestion] = useState(null);
+  const [isAddingObservation, setIsAddingObservation] = useState(false);
+  const [observation, setObservation] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [currentResponse, setCurrentResponse] = useState(null); // { answer, point }
 
   useEffect(() => {
-    if (!isTracking) {
-      // If we are in this page, we should probably be tracking
-      setIsTracking(true);
-    }
-  }, [isTracking]);
+    // We removed the auto-start logic to let the user click "INICIAR RONDA" manually
+  }, []);
 
   useEffect(() => {
     if (user?.assignedInstallationId) {
       // Fetch installation name
-      onSnapshot(doc(db, 'installations', user.assignedInstallationId), (snap) => {
+      const unsub = onSnapshot(doc(db, 'installations', user.assignedInstallationId), (snap) => {
         if (snap.exists()) setInstName(snap.data().name);
       }, (err) => {
         if (err.code !== 'permission-denied') console.error("Error fetching installation name:", err);
       });
 
-      // Fetch points
-      const q = query(
-        collection(db, 'installations', user.assignedInstallationId, 'markingPoints'),
-        orderBy('createdAt', 'asc')
-      );
-      const unsub = onSnapshot(q, (snap) => {
-        setPoints(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      }, (err) => {
-        if (err.code !== 'permission-denied') console.error("Error fetching marking points:", err);
-      });
       return unsub;
     }
   }, [user]);
@@ -189,6 +316,85 @@ const RoundScreen = () => {
 
   const handleScan = (pointId) => {
     navigate(`/scan?returnTo=/round/${scheduleId}?time=${roundTime}`);
+  };
+
+  const handleManualSubmit = async () => {
+    const point = points.find(p => p.id === manualModal);
+    if (!point) return;
+
+    if (manualCode.trim().toLowerCase() === String(point.qrCode || '').trim().toLowerCase()) {
+      if (point.question) {
+        setActiveQuestion(point);
+        setManualModal(null);
+      } else {
+        const success = await addScannedPoint(manualCode.trim(), {
+          pointId: point.id,
+          pointName: point.name
+        });
+        if (success) {
+          alert(`Punto "${point.name}" marcado con éxito.`);
+          setManualModal(null);
+          setManualCode('');
+        }
+      }
+    } else {
+      alert("El código ingresado no es correcto para este punto.");
+    }
+  };
+
+  const handleAnswer = async (answer) => {
+    const point = activeQuestion;
+    setActiveQuestion(null);
+    if (answer === 'NO') {
+      setCurrentResponse({ answer, point });
+      setIsAddingObservation(true);
+    } else {
+      const success = await addScannedPoint(manualCode.trim() || 'MANUAL', {
+        pointId: point.id,
+        pointName: point.name,
+        question: point.question,
+        answer,
+        observation: ''
+      });
+      if (success) {
+        alert("Punto marcado con éxito.");
+        setManualCode('');
+      }
+    }
+  };
+
+  const handleConfirmObservation = async () => {
+    if (!observation.trim()) return alert("Por favor, ingresa una observación.");
+    setIsAddingObservation(false);
+    const success = await addScannedPoint(manualCode.trim() || 'MANUAL', {
+      pointId: currentResponse.point.id,
+      pointName: currentResponse.point.name,
+      question: currentResponse.point.question,
+      answer: currentResponse.answer,
+      observation: observation
+    });
+    if (success) {
+      alert("Punto marcado con éxito.");
+      setManualCode('');
+      setObservation('');
+      setCurrentResponse(null);
+    }
+  };
+
+
+
+  const handleStartRound = async () => {
+    if (Capacitor.isNativePlatform()) {
+      const perms = await Geolocation.checkPermissions();
+      if (perms.location !== 'granted') {
+        const req = await Geolocation.requestPermissions();
+        if (req.location !== 'granted') {
+          alert('Se requiere permiso de ubicación para iniciar la ronda.');
+          return;
+        }
+      }
+    }
+    setIsTracking(true);
   };
 
   return (
@@ -223,10 +429,15 @@ const RoundScreen = () => {
                   </PointText>
                 </PointInfo>
                 
-                {!isScanned && (
-                  <ScanBtn onClick={() => handleScan(point.id)}>
-                    <QrCode size={16} /> ESCANEAR
-                  </ScanBtn>
+                {isTracking && !isScanned && (
+                  <ButtonGroup>
+                    <ActionBtn onClick={() => handleScan(point.id)}>
+                      <QrCode size={14} /> ESCANEAR
+                    </ActionBtn>
+                    <ActionBtn $secondary onClick={() => setManualModal(point.id)}>
+                      <Keyboard size={14} /> MANUAL
+                    </ActionBtn>
+                  </ButtonGroup>
                 )}
                 {isScanned && (
                   <CheckCircle2 size={24} color="#4CAF50" />
@@ -236,30 +447,80 @@ const RoundScreen = () => {
           })}
         </PointsList>
 
-        {points.length > 0 && scannedPointIds.length === points.length && (
-          <div style={{ marginTop: '30px', textAlign: 'center' }}>
-            <h3 style={{ color: '#000', marginBottom: '10px' }}>¡Ronda Completada!</h3>
-            <button 
-              onClick={() => {
-                setIsTracking(false);
-                navigate('/');
-              }}
-              style={{
-                background: '#4CAF50',
-                color: 'white',
-                border: 'none',
-                padding: '15px 30px',
-                borderRadius: '16px',
-                fontWeight: '700',
-                fontSize: '16px',
-                cursor: 'pointer'
-              }}
-            >
-              FINALIZAR Y VOLVER
-            </button>
-          </div>
+        {isTracking && (
+          <StartRoundBtn 
+            $stop={scannedPointIds.length < points.length} 
+            $finish={scannedPointIds.length === points.length}
+            onClick={() => {
+              setIsTracking(false);
+              navigate('/');
+            }}
+          >
+            {scannedPointIds.length === points.length ? <CheckCircle2 size={20} /> : <Square size={20} fill="#fff" />}
+            {scannedPointIds.length === points.length ? 'FINALIZAR RONDA' : 'DETENER RONDA'}
+          </StartRoundBtn>
+        )}
+
+        {!isTracking && points.length > 0 && (
+          <StartRoundBtn onClick={handleStartRound}>
+            <Play size={20} fill="#fff" /> INICIAR RONDA
+          </StartRoundBtn>
         )}
       </Content>
+
+      {manualModal && (
+        <ModalOverlay>
+          <ModalContent>
+            <ModalHeader>
+              <ModalTitle>Ingreso Manual</ModalTitle>
+              <X size={20} onClick={() => setManualModal(null)} style={{ cursor: 'pointer' }} />
+            </ModalHeader>
+            <p style={{ margin: 0, fontSize: 13, color: '#666' }}>
+              Ingresa el código para el punto: <strong>{points.find(p => p.id === manualModal)?.name}</strong>
+            </p>
+            <Input 
+              placeholder="Ej: 0123456789"
+              value={manualCode}
+              onChange={(e) => setManualCode(e.target.value)}
+              autoFocus
+            />
+            <PrimaryBtn onClick={handleManualSubmit}>CONFIRMAR</PrimaryBtn>
+          </ModalContent>
+        </ModalOverlay>
+      )}
+
+      {activeQuestion && (
+        <ModalOverlay>
+          <QuestionModal>
+            <QuestionTitle>{activeQuestion.question}</QuestionTitle>
+            <div style={{ display: 'flex', gap: '15px' }}>
+              <AnswerBtn onClick={() => handleAnswer('SÍ')}>SÍ</AnswerBtn>
+              <AnswerBtn $no onClick={() => handleAnswer('NO')}>NO</AnswerBtn>
+            </div>
+          </QuestionModal>
+        </ModalOverlay>
+      )}
+
+      {isAddingObservation && (
+        <ModalOverlay>
+          <ModalContent>
+             <ModalHeader>
+                <ModalTitle>Añadir Observación</ModalTitle>
+                <X size={20} onClick={() => { setIsAddingObservation(false); setCurrentResponse(null); }} style={{ cursor: 'pointer' }} />
+             </ModalHeader>
+             <p style={{ margin: 0, fontSize: 13, color: '#666' }}>
+               ¿Por qué respondiste que <strong>NO</strong>?
+             </p>
+             <TextArea 
+               placeholder="Escribe los detalles aquí..."
+               value={observation}
+               onChange={(e) => setObservation(e.target.value)}
+               autoFocus
+             />
+             <PrimaryBtn onClick={handleConfirmObservation}>CONFIRMAR</PrimaryBtn>
+          </ModalContent>
+        </ModalOverlay>
+      )}
     </Container>
   );
 };

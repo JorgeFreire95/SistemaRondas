@@ -325,37 +325,13 @@ const HomeScreen = () => {
               </Checklist>
             )}
 
-            <RoundAction 
-              $active={isTracking}
-              onClick={async () => {
-                if (!isTracking && Capacitor.isNativePlatform()) {
-                  const perms = await Geolocation.checkPermissions();
-                  if (perms.location !== 'granted') {
-                    const req = await Geolocation.requestPermissions();
-                    if (req.location !== 'granted') {
-                      alert('Se requiere permiso de ubicación para iniciar la ronda.');
-                      return;
-                    }
-                  }
-                }
-                setIsTracking(!isTracking);
-              }}
-            >
-              {isTracking ? <Square size={20} fill="#fff" /> : <Play size={20} fill="#fff" />}
-              {isTracking ? 'DETENER RONDA' : 'INICIAR RONDA'}
-            </RoundAction>
 
-            <Grid>
-              <MenuBtn onClick={() => navigate('/scan')}>
-                <Shield size={32} color="#1A1A1A" />
-                <MenuText>Escanear Punto</MenuText>
-              </MenuBtn>
-
-              <MenuBtn onClick={() => navigate('/map')}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+              <MenuBtn onClick={() => navigate('/map')} style={{ width: '100%' }}>
                 <MapIcon size={32} color="#1A1A1A" />
                 <MenuText>Ver Mapa</MenuText>
               </MenuBtn>
-            </Grid>
+            </div>
           </>
         )}
 

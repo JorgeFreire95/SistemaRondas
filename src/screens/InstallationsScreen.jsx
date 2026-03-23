@@ -2,10 +2,9 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, updateDoc, orderBy, where } from 'firebase/firestore';
-import { Html5Qrcode } from 'html5-qrcode';
 import { db, storage } from '../config/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { ChevronLeft, Building, MapPin, Trash2, Edit2, Clock, X, Plus, Camera, Image as ImageIcon } from 'lucide-react';
+import { ChevronLeft, Building, MapPin, Trash2, Edit2, Clock, X, Plus } from 'lucide-react';
 
 const Container = styled.div`
   display: flex;
@@ -220,10 +219,6 @@ const InstallationsScreen = () => {
   const [newPoint, setNewPoint] = useState('');
   const [newPointQR, setNewPointQR] = useState('');
   const [newPointQuestion, setNewPointQuestion] = useState('');
-  const [isScanningPoint, setIsScanningPoint] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState('');
-  const [photoPreview, setPhotoPreview] = useState(null);
 
   const [showScheduleModal, setShowScheduleModal] = useState(null);
   const [schedulesList, setSchedulesList] = useState([]);
@@ -318,116 +313,17 @@ const InstallationsScreen = () => {
 
   const handleAddPoint = async () => {
     if (!newPoint || !newPointQR) {
-      return alert('Asigna un nombre y escanea un código para el punto');
+      return alert('Asigna un nombre y un código para el punto');
     }
     await addDoc(collection(db, 'installations', showPointsModal.id, 'markingPoints'), {
       name: newPoint,
       qrCode: newPointQR,
-      photoUrl: photoPreview || '',
       question: newPointQuestion,
       createdAt: serverTimestamp()
     });
     setNewPoint('');
     setNewPointQR('');
     setNewPointQuestion('');
-    setPhotoPreview(null);
-  };
-
-  const compressImage = (file, maxWidth = 800) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target.result;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-
-          if (width > maxWidth) {
-            height = (maxWidth / width) * height;
-            width = maxWidth;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          
-          canvas.toBlob((blob) => {
-            resolve(blob);
-          }, 'image/jpeg', 0.5);
-        };
-      };
-    });
-  };
-
-  const handlePhotoCapture = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    setUploadStatus('Preparando...');
-    try {
-      // 1. COMPRIMIR PRIMERO (Para procesar una imagen más pequeña)
-      setUploadStatus('Optimizando...');
-      const compressedBlob = await compressImage(file);
-      
-      // 2. ESCANEAR CÓDIGO (Sobre la imagen ya optimizada, es más rápido)
-      setUploadStatus('Buscando código...');
-      const html5QrCode = new Html5Qrcode("point-scanner-hidden");
-      try {
-        const decodedText = await html5QrCode.scanImage(compressedBlob, true);
-        setNewPointQR(decodedText.trim());
-      } catch (scanErr) {
-        setNewPointQR('FOTO_SIN_CODIGO');
-      }
-
-      // 3. SUBIR CON SEGUIMIENTO DE PROGRESO
-      const storageRef = ref(storage, `installations/${showPointsModal.id}/points/${Date.now()}.jpg`);
-      const uploadTask = uploadBytesResumable(storageRef, compressedBlob);
-
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setUploadStatus(`Subiendo: ${Math.round(progress)}%`);
-        }, 
-        (error) => {
-          console.error("FULL Storage error object:", error);
-          alert(`Error de subida (${error.code}): ${error.message}\n\nSi el error es 'unauthorized', revisa las reglas de Storage. Si no dice nada, revisa la consola del navegador para ver si es un error de CORS.`);
-          setUploadStatus(`Error: ${error.code}`);
-          setIsUploading(false);
-        }, 
-        async () => {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          setPhotoPreview(url);
-          setUploadStatus('¡Listo!');
-          setIsUploading(false);
-          setTimeout(() => setUploadStatus(''), 2000);
-        }
-      );
-
-      // Diagnostic timeout: if it doesn't start in 10s, it's likely CORS
-      setTimeout(() => {
-        if (isUploading && uploadStatus.includes('Subiendo: 0%')) {
-          setUploadStatus('Lento o Error de CORS?');
-        }
-      }, 10000);
-
-    } catch (err) {
-      console.error("Process error:", err);
-      alert("Error inesperado al procesar la foto: " + err.message);
-      setUploadStatus('Error');
-      setIsUploading(false);
-    }
-  };
-
-  const skipUploadAndSaveManual = () => {
-    setPhotoPreview(''); 
-    setNewPointQR('MANUAL_SIN_FOTO');
-    setUploadStatus('Sin foto (Omitido)');
-    setIsUploading(false);
   };
 
   const handleDeletePoint = async (pointId) => {
@@ -530,57 +426,12 @@ const InstallationsScreen = () => {
                 onChange={e => setNewPoint(e.target.value)} 
                 style={{ marginBottom: 0 }}
               />
-               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                 <Input 
-                   placeholder="Código (se extrae de la foto)" 
-                   value={newPointQR} 
-                   onChange={e => setNewPointQR(e.target.value)}
-                   style={{ marginBottom: 0, background: '#F8F9FA' }}
-                 />
-                 <div style={{ display: 'flex', gap: '8px' }}>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      capture="environment" 
-                      id="photo-input" 
-                      hidden 
-                      onChange={handlePhotoCapture} 
-                    />
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      id="gallery-input" 
-                      hidden 
-                      onChange={handlePhotoCapture} 
-                    />
-                    <ActionBtn 
-                      onClick={() => document.getElementById('photo-input').click()} 
-                      disabled={isUploading}
-                      style={{ flex: 1, background: '#1A1A1A', color: 'white' }}
-                    >
-                      <Camera size={18} />
-                      Cámara
-                    </ActionBtn>
-                    <ActionBtn 
-                      onClick={() => document.getElementById('gallery-input').click()} 
-                      disabled={isUploading}
-                      style={{ flex: 1, background: '#F1F3F5', color: '#1A1A1A' }}
-                    >
-                      <ImageIcon size={18} />
-                      Galería
-                    </ActionBtn>
-                 </div>
-               </div>
-
-              {uploadStatus && <div style={{ fontSize: '12px', color: '#666', textAlign: 'center', fontWeight: 'bold' }}>{uploadStatus}</div>}
-
-              {photoPreview && (
-                <div style={{ width: '100%', height: '150px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #EEE' }}>
-                  <img src={photoPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-              )}
-              
-              <div id="point-scanner-hidden" style={{ display: 'none' }}></div>
+              <Input 
+                placeholder="Código (ej: BODEGA_01)" 
+                value={newPointQR} 
+                onChange={e => setNewPointQR(e.target.value)}
+                style={{ marginBottom: 0 }}
+              />
 
               <Input 
                 placeholder="Pregunta (ej: ¿Está cerrado?)" 
