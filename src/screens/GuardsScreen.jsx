@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, UserPlus, Shield, MapPin, Mail, CreditCard, Building, Trash2, Edit2, History, X, Navigation as NavigationIcon, Search } from 'lucide-react';
-import { collection, query, onSnapshot, where, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, where, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../context/AuthContext';
 
@@ -229,6 +229,7 @@ const GuardsScreen = () => {
   const { addUser, user } = useAuth();
   const [installations, setInstallations] = useState([]);
   const [guards, setGuards] = useState([]);
+  const [allSections, setAllSections] = useState({}); // { instId: [sections] }
 
   // Form states
   const [name, setName] = useState('');
@@ -236,8 +237,10 @@ const GuardsScreen = () => {
   const [address, setAddress] = useState('');
   const [email, setEmail] = useState('');
   const [selectedInst, setSelectedInst] = useState('');
+  const [selectedSectionId, setSelectedSectionId] = useState('');
   const [sortBy, setSortBy] = useState('asc'); // 'asc' or 'desc'
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Editing state
   const [editingGuard, setEditingGuard] = useState(null);
@@ -246,6 +249,7 @@ const GuardsScreen = () => {
   const [editAddress, setEditAddress] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editInst, setEditInst] = useState('');
+  const [editSectionId, setEditSectionId] = useState('');
 
   useEffect(() => {
     // Listen to installations
@@ -268,6 +272,29 @@ const GuardsScreen = () => {
       unsubGuards();
     };
   }, []);
+
+  // Listen to ALL sections to show names in the list
+  useEffect(() => {
+    if (installations.length === 0) return;
+    
+    const unsubs = installations.map(inst => {
+      const q = query(collection(db, 'installations', inst.id, 'sections'), orderBy('createdAt', 'asc'));
+      return onSnapshot(q, (snap) => {
+        setAllSections(prev => ({
+          ...prev,
+          [inst.id]: snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        }));
+      });
+    });
+
+    return () => unsubs.forEach(u => u());
+  }, [installations]);
+
+  // Sections for creation form (reactive to selectedInst)
+  const sections = allSections[selectedInst] || [];
+
+  // Sections for editing form (reactive to editInst)
+  const editSections = allSections[editInst] || [];
 
   const sortedGuards = React.useMemo(() => {
     let filtered = [...guards];
@@ -294,10 +321,14 @@ const GuardsScreen = () => {
       return alert('Completa todos los campos');
     }
 
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     const res = await addUser(email, rut, name, 'guardia', {
       rut,
       address,
-      assignedInstallationId: selectedInst
+      assignedInstallationId: selectedInst,
+      assignedSectionId: selectedSectionId || null
     });
 
     if (res.success) {
@@ -306,10 +337,16 @@ const GuardsScreen = () => {
       setAddress('');
       setEmail('');
       setSelectedInst('');
+      setSelectedSectionId('');
       alert('Guardia registrado con éxito');
     } else {
-      alert('Error: ' + res.message);
+      let msg = res.message;
+      if (msg.includes('email-already-in-use')) {
+        msg = 'ESTE EMAIL YA ESTÁ REGISTRADO EN EL SISTEMA. Verifica en la consola de Firebase si el usuario existe en Authentication pero no en la base de datos.';
+      }
+      alert('Error: ' + msg);
     }
+    setIsSubmitting(false);
   };
 
   const handleDelete = async (id) => {
@@ -331,6 +368,7 @@ const GuardsScreen = () => {
     setEditAddress(g.address || '');
     setEditEmail(g.email || '');
     setEditInst(g.assignedInstallationId || '');
+    setEditSectionId(g.assignedSectionId || '');
   };
 
   const handleUpdate = async () => {
@@ -340,7 +378,8 @@ const GuardsScreen = () => {
         rut: editRut,
         address: editAddress,
         email: editEmail,
-        assignedInstallationId: editInst
+        assignedInstallationId: editInst,
+        assignedSectionId: editSectionId || null
       });
       setEditingGuard(null);
       alert('Perfil actualizado');
@@ -383,7 +422,6 @@ const GuardsScreen = () => {
               <IconWrapper><Mail size={18} /></IconWrapper>
               <Input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
             </InputWrapper>
-
             <InputWrapper>
               <IconWrapper><Building size={18} /></IconWrapper>
               <Select value={selectedInst} onChange={e => setSelectedInst(e.target.value)}>
@@ -393,10 +431,20 @@ const GuardsScreen = () => {
                 ))}
               </Select>
             </InputWrapper>
+
+            <InputWrapper>
+              <IconWrapper><Building size={18} /></IconWrapper>
+              <Select value={selectedSectionId} onChange={e => setSelectedSectionId(e.target.value)} disabled={!selectedInst}>
+                <option value="">Selecciona Sección (Opcional)</option>
+                {sections.map(sec => (
+                  <option key={sec.id} value={sec.id}>{sec.name}</option>
+                ))}
+              </Select>
+            </InputWrapper>
             
-            <CreateBtn onClick={handleCreateGuard}>
+            <CreateBtn onClick={handleCreateGuard} disabled={isSubmitting}>
               <UserPlus size={18} />
-              Registrar Guardia
+              {isSubmitting ? 'REGISTRANDO...' : 'Registrar Guardia'}
             </CreateBtn>
           </Card>
         )}
@@ -437,7 +485,14 @@ const GuardsScreen = () => {
                 {g.activeRoundId && <Badge>En Ronda</Badge>}
               </div>
                   <GuardSub>{g.email} | RUT: {g.rut}</GuardSub>
-                  {inst && <GuardSub>Asignado a: <strong>{inst.name}</strong></GuardSub>}
+                  {inst && (
+                    <GuardSub>
+                      Asignado a: <strong>{inst.name}</strong> 
+                      {g.assignedSectionId && (
+                        <> - { (allSections[inst.id]?.find(s => s.id === g.assignedSectionId)?.name) || 'Punto de control' }</>
+                      )}
+                    </GuardSub>
+                  )}
                 </GuardInfo>
                 <GuardActions>
                   <ActionBtn onClick={() => navigate('/map', { state: { guardId: g.id } })}>
@@ -491,6 +546,16 @@ const GuardsScreen = () => {
                 <option value="">Selecciona Instalación</option>
                 {installations.map(inst => (
                   <option key={inst.id} value={inst.id}>{inst.name}</option>
+                ))}
+              </Select>
+            </InputWrapper>
+
+            <InputWrapper>
+              <IconWrapper><Building size={18} /></IconWrapper>
+              <Select value={editSectionId} onChange={e => setEditSectionId(e.target.value)} disabled={!editInst}>
+                <option value="">Selecciona Sección (Opcional)</option>
+                {editSections.map(sec => (
+                  <option key={sec.id} value={sec.id}>{sec.name}</option>
                 ))}
               </Select>
             </InputWrapper>

@@ -84,19 +84,34 @@ const Button = styled.button`
 
 
 
+const ErrorMsg = styled.div`
+  background: #FFF0F0;
+  color: #FF4D4F;
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  text-align: center;
+  border: 1px solid #FFD6D6;
+`;
+
 const LoginScreen = () => {
-  const { login, addUser } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
+    setError('');
     const res = await login(email.trim(), password.trim());
     if (!res.success) {
-      alert(res.message);
+      setError(res.message);
       setLoading(false);
     }
   };
@@ -108,6 +123,7 @@ const LoginScreen = () => {
       <Card>
         <Title>Sistema de Rondas</Title>
         <Subtitle>Inicie sesión para continuar</Subtitle>
+        {error && <ErrorMsg>{error}</ErrorMsg>}
         <form onSubmit={handleLogin}>
           <InputGroup>
             <User size={20} color="#666" />

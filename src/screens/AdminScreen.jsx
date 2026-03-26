@@ -215,6 +215,7 @@ const AdminScreen = () => {
   const [users, setUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('asc'); // 'asc', 'desc'
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form states
   const [name, setName] = useState('');
@@ -261,15 +262,27 @@ const AdminScreen = () => {
 
   const handleCreateUser = async () => {
     if (!email || !name || !rut) return alert('Por favor, completa los campos mínimos (Nombre, Email, RUT)');
+    
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     const res = await addUser(email, rut, name, role, { 
       rut, 
       address,
       createdAt: new Date().toISOString()
     });
+
     if (res.success) {
       setEmail(''); setName(''); setRut(''); setAddress('');
       alert('Usuario ' + role + ' creado con éxito');
-    } else alert(res.message);
+    } else {
+      let msg = res.message;
+      if (msg.includes('email-already-in-use')) {
+        msg = 'ESTE EMAIL YA ESTÁ REGISTRADO EN EL SISTEMA. Verifica en la consola de Firebase si el usuario existe en Authentication pero no en la base de datos.';
+      }
+      alert('Error: ' + msg);
+    }
+    setIsSubmitting(false);
   };
 
   const handleDelete = async (uid) => {
@@ -335,8 +348,8 @@ const AdminScreen = () => {
             <Input placeholder="Email corporativo" value={email} onChange={e => setEmail(e.target.value)} />
           </InputWrapper>
           
-          <CreateBtn onClick={handleCreateUser}>
-            <UserPlus size={20} /> Registrar Administrador
+          <CreateBtn onClick={handleCreateUser} disabled={isSubmitting}>
+            <UserPlus size={20} /> {isSubmitting ? 'REGISTRANDO...' : 'Registrar Administrador'}
           </CreateBtn>
         </Card>
 

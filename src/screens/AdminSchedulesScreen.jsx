@@ -119,6 +119,7 @@ const AdminSchedulesScreen = () => {
   const { setAdminInstallationId, startNewRound } = useLocation();
   const [installation, setInstallation] = useState(null);
   const [schedules, setSchedules] = useState([]);
+  const [sections, setSections] = useState([]);
 
   useEffect(() => {
     // Set effective installation ID in context
@@ -135,13 +136,16 @@ const AdminSchedulesScreen = () => {
       setSchedules(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    // Fetch sections for names
+    const qSec = query(collection(db, 'installations', instId, 'sections'));
+    const unsubSec = onSnapshot(qSec, (snap) => {
+      setSections(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
     return () => {
       unsubInst();
       unsubSched();
-      // We don't clear adminInstallationId here to allow the round to continue 
-      // if they navigate to RoundScreen, but we might want to clear it on unmount 
-      // IF they are not starting a round. 
-      // Actually, effectiveInstId is needed in RoundScreen.
+      unsubSec();
     };
   }, [instId]);
 
@@ -172,10 +176,17 @@ const AdminSchedulesScreen = () => {
         <ScheduleList>
           {schedules.map(sched => (
             <ScheduleCard key={sched.id} onClick={() => handleStartRound(sched)}>
-              <ScheduleTime>
-                <Clock size={20} color="#666" />
-                {sched.time} hrs
-              </ScheduleTime>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <ScheduleTime>
+                  <Clock size={20} color="#666" />
+                  {sched.time} hrs
+                </ScheduleTime>
+                {sched.sectionId && (
+                  <div style={{ fontSize: '11px', color: '#1A1A1A', fontWeight: '700', marginLeft: '30px' }}>
+                    SECCIÓN: {sections.find(s => s.id === sched.sectionId)?.name || 'Cargando...'}
+                  </div>
+                )}
+              </div>
               <StartIcon>
                 <Play size={20} fill="currentColor" />
               </StartIcon>

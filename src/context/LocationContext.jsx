@@ -17,6 +17,7 @@ export const LocationProvider = ({ children }) => {
   const [locationHistory, setLocationHistory] = useState([]);
   const [scannedPoints, setScannedPoints] = useState([]);
   const [markingPoints, setMarkingPoints] = useState([]);
+  const [sections, setSections] = useState([]);
   const [loadingPoints, setLoadingPoints] = useState(true);
   const [adminInstallationId, setAdminInstallationId] = useState(null);
 
@@ -49,7 +50,13 @@ export const LocationProvider = ({ children }) => {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const pts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      let pts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Filter points if the user is a guard assigned to a specific section
+      if (user?.role === 'guardia' && user?.assignedSectionId) {
+        pts = pts.filter(p => p.sectionId === user.assignedSectionId);
+      }
+      
       setMarkingPoints(pts);
       setLoadingPoints(false);
     }, (err) => {
@@ -58,7 +65,32 @@ export const LocationProvider = ({ children }) => {
     });
 
     return unsubscribe;
-  }, [effectiveInstId]);
+  }, [effectiveInstId, user?.assignedSectionId, user?.role]);
+
+  // Global listener for sections of the assigned installation
+  useEffect(() => {
+    if (!effectiveInstId || effectiveInstId === 'no-installation') {
+      setSections([]);
+      return;
+    }
+    const q = query(
+      collection(db, 'installations', effectiveInstId, 'sections'),
+      orderBy('createdAt', 'asc')
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      let secs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Filter sections if the user is a guard assigned to a specific section
+      if (user?.role === 'guardia' && user?.assignedSectionId) {
+        secs = secs.filter(s => s.id === user.assignedSectionId);
+      }
+      
+      setSections(secs);
+    }, (err) => {
+      if (err.code !== 'permission-denied') console.error("Error fetching sections:", err);
+    });
+    return unsubscribe;
+  }, [effectiveInstId, user?.assignedSectionId, user?.role]);
 
   // Global listener for assigned installation info
   useEffect(() => {
@@ -245,6 +277,7 @@ export const LocationProvider = ({ children }) => {
         locationHistory,
         scannedPoints,
         markingPoints,
+        sections,
         loadingPoints,
         addScannedPoint,
         currentRoundId,

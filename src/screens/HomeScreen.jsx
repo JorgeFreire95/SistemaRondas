@@ -238,7 +238,14 @@ const HomeScreen = () => {
       // Fetch schedules
       const qSched = query(collection(db, 'installations', user.assignedInstallationId, 'schedules'), orderBy('time', 'asc'));
       const unsubSched = onSnapshot(qSched, (snap) => {
-        setSchedules(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        let docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        // Filter by section if guard has an assignment
+        if (user?.role === 'guardia' && user?.assignedSectionId) {
+          docs = docs.filter(s => !s.sectionId || s.sectionId === user.assignedSectionId);
+        }
+        
+        setSchedules(docs);
       }, (err) => {
         if (err.code !== 'permission-denied') console.error("Error fetching schedules:", err);
       });

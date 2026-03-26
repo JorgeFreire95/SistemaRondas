@@ -276,13 +276,26 @@ const StartRoundBtn = styled.button`
   }
 `;
 
+const SectionHeader = styled.div`
+  font-size: 14px;
+  font-weight: 800;
+  color: #1A1A1A;
+  margin-top: 24px;
+  margin-bottom: 12px;
+  padding-left: 4px;
+  border-left: 4px solid #1A1A1A;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
 const RoundScreen = () => {
   const navigate = useNavigate();
   const { scheduleId } = useParams();
   const [searchParams] = useSearchParams();
   const roundTime = searchParams.get('time');
   const { user } = useAuth();
-  const { isTracking, setIsTracking, currentRoundId, scannedPoints, markingPoints: points, addScannedPoint, startNewRound, effectiveInstId } = useLocation();
+  const { isTracking, setIsTracking, currentRoundId, scannedPoints, markingPoints: points, sections, addScannedPoint, startNewRound, effectiveInstId } = useLocation();
   const [instName, setInstName] = useState('');
   const [manualModal, setManualModal] = useState(null); // pointId if open
   const [manualCode, setManualCode] = useState('');
@@ -313,6 +326,39 @@ const RoundScreen = () => {
   const scannedPointIds = scannedPoints
     .filter(p => p.roundId === currentRoundId)
     .map(p => p.pointId);
+
+  const renderPointCard = (point) => {
+    const isScanned = scannedPointIds.includes(point.id);
+    return (
+      <PointCard key={point.id} $scanned={isScanned}>
+        <PointInfo>
+          <IconBox $scanned={isScanned}>
+            {isScanned ? <CheckCircle2 size={22} /> : <MapPin size={22} />}
+          </IconBox>
+          <PointText>
+            <PointName $scanned={isScanned}>{point.name}</PointName>
+            <PointStatus $scanned={isScanned}>
+              {isScanned ? 'Completado' : 'Pendiente'}
+            </PointStatus>
+          </PointText>
+        </PointInfo>
+        
+        {isTracking && !isScanned && (
+          <ButtonGroup>
+            <ActionBtn onClick={() => handleScan(point.id)}>
+              <QrCode size={14} /> ESCANEAR
+            </ActionBtn>
+            <ActionBtn $secondary onClick={() => setManualModal(point.id)}>
+              <Keyboard size={14} /> MANUAL
+            </ActionBtn>
+          </ButtonGroup>
+        )}
+        {isScanned && (
+          <CheckCircle2 size={24} color="#4CAF50" />
+        )}
+      </PointCard>
+    );
+  };
 
   const handleScan = (pointId) => {
     navigate(`/scan?time=${roundTime}&returnTo=${encodeURIComponent(`/round/${scheduleId}?time=${roundTime}`)}`);
@@ -419,38 +465,46 @@ const RoundScreen = () => {
 
       <Content>
         <PointsList>
-          {points.map(point => {
-            const isScanned = scannedPointIds.includes(point.id);
+          {/* Group points by section */}
+          {(() => {
+            const grouped = sections.reduce((acc, section) => {
+              acc[section.id] = {
+                name: section.name,
+                points: points.filter(p => p.sectionId === section.id)
+              };
+              return acc;
+            }, {});
+
+            const pointsWithoutSection = points.filter(p => !p.sectionId || !sections.find(s => s.id === p.sectionId));
+            
             return (
-              <PointCard key={point.id} $scanned={isScanned}>
-                <PointInfo>
-                  <IconBox $scanned={isScanned}>
-                    {isScanned ? <CheckCircle2 size={22} /> : <MapPin size={22} />}
-                  </IconBox>
-                  <PointText>
-                    <PointName $scanned={isScanned}>{point.name}</PointName>
-                    <PointStatus $scanned={isScanned}>
-                      {isScanned ? 'Completado' : 'Pendiente'}
-                    </PointStatus>
-                  </PointText>
-                </PointInfo>
-                
-                {isTracking && !isScanned && (
-                  <ButtonGroup>
-                    <ActionBtn onClick={() => handleScan(point.id)}>
-                      <QrCode size={14} /> ESCANEAR
-                    </ActionBtn>
-                    <ActionBtn $secondary onClick={() => setManualModal(point.id)}>
-                      <Keyboard size={14} /> MANUAL
-                    </ActionBtn>
-                  </ButtonGroup>
+              <>
+                {sections.map(section => {
+                  const sectionPoints = grouped[section.id].points;
+                  if (sectionPoints.length === 0) return null;
+                  return (
+                    <React.Fragment key={section.id}>
+                      <SectionHeader>
+                        <Building size={16} /> {section.name}
+                      </SectionHeader>
+                      {sectionPoints.map(point => renderPointCard(point))}
+                    </React.Fragment>
+                  );
+                })}
+
+                {pointsWithoutSection.length > 0 && (
+                  <>
+                    {sections.length > 0 && (
+                      <SectionHeader>
+                        <MapPin size={16} /> Otros Puntos
+                      </SectionHeader>
+                    )}
+                    {pointsWithoutSection.map(point => renderPointCard(point))}
+                  </>
                 )}
-                {isScanned && (
-                  <CheckCircle2 size={24} color="#4CAF50" />
-                )}
-              </PointCard>
+              </>
             );
-          })}
+          })()}
         </PointsList>
 
         {isTracking && (

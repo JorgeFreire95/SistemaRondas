@@ -17,6 +17,10 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
+// Secondary app for admin-only registrations (avoids auto-login)
+const adminApp = initializeApp(firebaseConfig, "admin-registration");
+export const adminAuth = getAuth(adminApp);
+
 // Use browserSessionPersistence to logout on tab/window closure
 setPersistence(auth, browserSessionPersistence)
   .catch((error) => console.error("Persistence error:", error));

@@ -261,6 +261,11 @@ const InstallationsScreen = () => {
   const [schedulesList, setSchedulesList] = useState([]);
   const [newSchedule, setNewSchedule] = useState('');
 
+  const [showSectionsModal, setShowSectionsModal] = useState(null);
+  const [sectionsList, setSectionsList] = useState([]);
+  const [newSectionName, setNewSectionName] = useState('');
+  const [selectedSectionId, setSelectedSectionId] = useState('');
+
   useEffect(() => {
     const unsubInst = onSnapshot(collection(db, 'installations'), (snap) => {
       setInstallations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -308,6 +313,33 @@ const InstallationsScreen = () => {
       setSchedulesList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
   }, [showScheduleModal]);
+
+  // Fetch sections when schedules modal opens
+  useEffect(() => {
+    if (!showScheduleModal) return;
+    const q = query(collection(db, 'installations', showScheduleModal.id, 'sections'), orderBy('createdAt', 'asc'));
+    return onSnapshot(q, (snap) => {
+      setSectionsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+  }, [showScheduleModal]);
+
+  // Listen to sections when modal opens
+  useEffect(() => {
+    if (!showSectionsModal) return;
+    const q = query(collection(db, 'installations', showSectionsModal.id, 'sections'), orderBy('createdAt', 'asc'));
+    return onSnapshot(q, (snap) => {
+      setSectionsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+  }, [showSectionsModal]);
+
+  // Also fetch sections when points modal opens
+  useEffect(() => {
+    if (!showPointsModal) return;
+    const q = query(collection(db, 'installations', showPointsModal.id, 'sections'), orderBy('createdAt', 'asc'));
+    return onSnapshot(q, (snap) => {
+      setSectionsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+  }, [showPointsModal]);
 
   const handleCreateInstallation = async () => {
     if (!instName || !instRegion || !instComuna || !instStreet || !instNumber) {
@@ -383,11 +415,13 @@ const InstallationsScreen = () => {
       name: newPoint,
       qrCode: newPointQR,
       question: newPointQuestion,
+      sectionId: selectedSectionId || null,
       createdAt: serverTimestamp()
     });
     setNewPoint('');
     setNewPointQR('');
     setNewPointQuestion('');
+    setSelectedSectionId('');
   };
 
   const handleDeletePoint = async (pointId) => {
@@ -395,16 +429,32 @@ const InstallationsScreen = () => {
   };
 
   const handleAddSchedule = async () => {
-    if (!newSchedule) return;
     await addDoc(collection(db, 'installations', showScheduleModal.id, 'schedules'), {
       time: newSchedule,
+      sectionId: selectedSectionId || null,
       createdAt: serverTimestamp()
     });
     setNewSchedule('');
+    setSelectedSectionId('');
   };
 
   const handleDeleteSchedule = async (schedId) => {
     await deleteDoc(doc(db, 'installations', showScheduleModal.id, 'schedules', schedId));
+  };
+
+  const handleAddSection = async () => {
+    if (!newSectionName) return;
+    await addDoc(collection(db, 'installations', showSectionsModal.id, 'sections'), {
+      name: newSectionName,
+      createdAt: serverTimestamp()
+    });
+    setNewSectionName('');
+  };
+
+  const handleDeleteSection = async (sectionId) => {
+    if (window.confirm('¿Eliminar esta sección? Los puntos asociados quedarán sin sección.')) {
+      await deleteDoc(doc(db, 'installations', showSectionsModal.id, 'sections', sectionId));
+    }
   };
 
   return (
@@ -479,6 +529,9 @@ const InstallationsScreen = () => {
                 {i.address}, {i.comuna}, {i.region}
               </InstLoc>
               <InstActions>
+                <ActionBtn onClick={() => setShowSectionsModal(i)}>
+                  <Plus size={16} /> Secciones
+                </ActionBtn>
                 <ActionBtn onClick={() => setShowPointsModal(i)}>
                   <MapPin size={16} /> Puntos
                 </ActionBtn>
@@ -558,6 +611,17 @@ const InstallationsScreen = () => {
                 style={{ marginBottom: 0 }}
               />
 
+              <Select 
+                value={selectedSectionId} 
+                onChange={e => setSelectedSectionId(e.target.value)}
+                style={{ marginBottom: 0 }}
+              >
+                <option value="">Sin Sección (Opcional)</option>
+                {sectionsList.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </Select>
+
               <CreateBtn onClick={handleAddPoint}>
                 <Plus size={20} /> Guardar Punto
               </CreateBtn>
@@ -568,6 +632,11 @@ const InstallationsScreen = () => {
                    <div>
                     <SubText>{p.name}</SubText>
                     {p.question && <div style={{ fontSize: '11px', color: '#666' }}>Pregunta: {p.question}</div>}
+                    {p.sectionId && (
+                      <div style={{ fontSize: '11px', color: '#1A1A1A', fontWeight: '600' }}>
+                        Sección: {sectionsList.find(s => s.id === p.sectionId)?.name || 'Cargando...'}
+                      </div>
+                    )}
                     <div style={{ fontSize: '10px', color: '#999' }}>Código: {p.qrCode}</div>
                     {p.photoUrl && (
                       <div style={{ marginTop: '8px', width: '60px', height: '60px', borderRadius: '8px', overflow: 'hidden' }}>
@@ -592,25 +661,76 @@ const InstallationsScreen = () => {
               <CardTitle style={{ marginBottom: 0 }}>Horarios: {showScheduleModal.name}</CardTitle>
               <ActionBtn style={{ flex: 'none' }} onClick={() => setShowScheduleModal(null)}><X size={20}/></ActionBtn>
             </ModalHeader>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <Input 
-                type="time" 
-                value={newSchedule} 
-                onChange={e => setNewSchedule(e.target.value)} 
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <Input 
+                  type="time" 
+                  value={newSchedule} 
+                  onChange={e => setNewSchedule(e.target.value)} 
+                  style={{ marginBottom: 0, flex: 1 }}
+                />
+                <ActionBtn onClick={handleAddSchedule} style={{ flex: 'none', background: '#1A1A1A', color: 'white' }}>
+                  <Plus size={20} />
+                </ActionBtn>
+              </div>
+              <Select 
+                value={selectedSectionId} 
+                onChange={e => setSelectedSectionId(e.target.value)}
                 style={{ marginBottom: 0 }}
-              />
-              <ActionBtn onClick={handleAddSchedule} style={{ flex: 'none', background: '#1A1A1A', color: 'white' }}>
-                <Plus size={20} />
-              </ActionBtn>
+              >
+                <option value="">Sección (Opcional)</option>
+                {sectionsList.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </Select>
             </div>
             <SubList>
               {schedulesList.map(s => (
                 <SubItem key={s.id}>
-                  <SubText>{s.time} hrs</SubText>
+                  <div>
+                    <SubText>{s.time} hrs</SubText>
+                    {s.sectionId && (
+                      <div style={{ fontSize: '11px', color: '#1A1A1A', fontWeight: '600' }}>
+                        Sección: {sectionsList.find(sec => sec.id === s.sectionId)?.name || 'Cargando...'}
+                      </div>
+                    )}
+                  </div>
                   <IconButton onClick={() => handleDeleteSchedule(s.id)}><Trash2 size={16}/></IconButton>
                 </SubItem>
               ))}
               {schedulesList.length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: '10px' }}>No hay horarios registrados</div>}
+            </SubList>
+          </Modal>
+        </ModalOverlay>
+      )}
+
+      {/* Sections Modal */}
+      {showSectionsModal && (
+        <ModalOverlay onClick={() => setShowSectionsModal(null)}>
+          <Modal onClick={e => e.stopPropagation()}>
+            <ModalHeader>
+              <CardTitle style={{ marginBottom: 0 }}>Secciones: {showSectionsModal.name}</CardTitle>
+              <ActionBtn style={{ flex: 'none' }} onClick={() => setShowSectionsModal(null)}><X size={20}/></ActionBtn>
+            </ModalHeader>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Input 
+                placeholder="Nombre de la sección (ej: Bodgas Norte)" 
+                value={newSectionName} 
+                onChange={e => setNewSectionName(e.target.value)} 
+                style={{ marginBottom: 0 }}
+              />
+              <ActionBtn onClick={handleAddSection} style={{ flex: 'none', background: '#1A1A1A', color: 'white' }}>
+                <Plus size={20} />
+              </ActionBtn>
+            </div>
+            <SubList>
+              {sectionsList.map(s => (
+                <SubItem key={s.id}>
+                  <SubText>{s.name}</SubText>
+                  <IconButton onClick={() => handleDeleteSection(s.id)}><Trash2 size={16}/></IconButton>
+                </SubItem>
+              ))}
+              {sectionsList.length === 0 && <div style={{ textAlign: 'center', color: '#888', padding: '10px' }}>No hay secciones registradas</div>}
             </SubList>
           </Modal>
         </ModalOverlay>

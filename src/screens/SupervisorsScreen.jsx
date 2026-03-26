@@ -207,6 +207,7 @@ const SupervisorsScreen = () => {
   const [selectedInst, setSelectedInst] = useState('');
   const [sortBy, setSortBy] = useState('asc'); // 'asc' or 'desc'
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Editing state
   const [editingSuper, setEditingSuper] = useState(null);
@@ -263,6 +264,9 @@ const SupervisorsScreen = () => {
       return alert('Completa todos los campos');
     }
 
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     const res = await addUser(email, rut, name, 'supervisor', {
       rut,
       address,
@@ -277,8 +281,13 @@ const SupervisorsScreen = () => {
       setSelectedInst('');
       alert('Supervisor registrado con éxito');
     } else {
-      alert('Error: ' + res.message);
+      let msg = res.message;
+      if (msg.includes('email-already-in-use')) {
+        msg = 'ESTE EMAIL YA ESTÁ REGISTRADO EN EL SISTEMA. Verifica en la consola de Firebase si el usuario existe en Authentication pero no en la base de datos.';
+      }
+      alert('Error: ' + msg);
     }
+    setIsSubmitting(false);
   };
 
   const handleDelete = async (id) => {
@@ -362,9 +371,9 @@ const SupervisorsScreen = () => {
             </Select>
           </InputWrapper>
           
-          <CreateBtn onClick={handleCreateSuper}>
+          <CreateBtn onClick={handleCreateSuper} disabled={isSubmitting}>
             <UserPlus size={18} />
-            Registrar Supervisor
+            {isSubmitting ? 'REGISTRANDO...' : 'Registrar Supervisor'}
           </CreateBtn>
         </Card>
 
