@@ -26,7 +26,7 @@ setPersistence(auth, browserSessionPersistence)
   .catch((error) => console.error("Persistence error:", error));
 
 export const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true,
+  // Removed experimentalAutoDetectLongPolling due to ca9 crash on Capacitor
 });
 export const storage = getStorage(app);
 export default app;

@@ -270,7 +270,8 @@ const InstallationsScreen = () => {
     const unsubInst = onSnapshot(collection(db, 'installations'), (snap) => {
       setInstallations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (err) => {
-      if (err.code !== 'permission-denied') console.error("Error fetching installations:", err);
+      console.error("Error fetching installations:", err);
+      alert("Error cargando instalaciones: " + err.message);
     });
     return unsubInst;
   }, []);
@@ -597,6 +598,7 @@ const InstallationsScreen = () => {
                 onChange={e => setNewPoint(e.target.value)} 
                 style={{ marginBottom: 0 }}
               />
+
               <Input 
                 placeholder="Código (ej: BODEGA_01)" 
                 value={newPointQR} 

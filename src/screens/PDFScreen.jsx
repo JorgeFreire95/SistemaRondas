@@ -6,6 +6,9 @@ import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 const Container = styled.div`
   display: flex;
@@ -227,7 +230,32 @@ const PDFScreen = () => {
       }
     });
 
-    doc.save(`Reporte_Rondas_${startDate}_${endDate}.pdf`);
+    const fileName = `Reporte_Rondas_${startDate}_${endDate}.pdf`;
+
+    if (Capacitor.isNativePlatform()) {
+      (async () => {
+        try {
+          const base64Data = doc.output('datauristring').split(',')[1];
+          const result = await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Cache
+          });
+
+          await Share.share({
+            title: 'Reporte de Rondas',
+            text: 'Aquí está tu reporte PDF de rondas de seguridad.',
+            url: result.uri,
+            dialogTitle: 'Compartir o Guardar PDF'
+          });
+        } catch (err) {
+          console.error("Error nativo al guardar PDF:", err);
+          alert("Error al intentar abrir el PDF en el dispositivo: " + err.message);
+        }
+      })();
+    } else {
+      doc.save(fileName);
+    }
   };
 
   return (

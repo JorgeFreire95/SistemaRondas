@@ -17,6 +17,9 @@ import SupervisorsScreen from './screens/SupervisorsScreen'
 import ClientsScreen from './screens/ClientsScreen'
 import AdminRoundsScreen from './screens/AdminRoundsScreen';
 import AdminSchedulesScreen from './screens/AdminSchedulesScreen';
+import AttendanceScreen from './screens/AttendanceScreen';
+import AdminAttendanceScreen from './screens/AdminAttendanceScreen';
+import RoundDetailsScreen from './screens/RoundDetailsScreen';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth()
@@ -36,6 +39,7 @@ function AppContent() {
   return (
     <Routes>
       <Route path="/login" element={<PublicRoute><LoginScreen /></PublicRoute>} />
+      <Route path="/attendance" element={<AttendanceScreen />} />
       <Route path="/" element={<ProtectedRoute><HomeScreen /></ProtectedRoute>} />
       <Route path="/scan" element={<ProtectedRoute><ScannerScreen /></ProtectedRoute>} />
       <Route path="/round/:scheduleId" element={<ProtectedRoute><RoundScreen /></ProtectedRoute>} />
@@ -49,6 +53,8 @@ function AppContent() {
       <Route path="/clients" element={<ProtectedRoute><ClientsScreen /></ProtectedRoute>} />
       <Route path="/admin-rounds" element={<ProtectedRoute><AdminRoundsScreen /></ProtectedRoute>} />
       <Route path="/admin-schedules/:instId" element={<ProtectedRoute><AdminSchedulesScreen /></ProtectedRoute>} />
+      <Route path="/admin-attendance" element={<ProtectedRoute><AdminAttendanceScreen /></ProtectedRoute>} />
+      <Route path="/round-details" element={<ProtectedRoute><RoundDetailsScreen /></ProtectedRoute>} />
     </Routes>
   )
 }

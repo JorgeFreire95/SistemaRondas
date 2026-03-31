@@ -81,15 +81,8 @@ export const AuthProvider = ({ children }) => {
       
       if (userSnap.exists()) {
         const data = userSnap.data();
-        if (data.activeSessionId && data.activeSessionId !== sessionId) {
-          await signOut(auth); // Sign out immediately
-          return { 
-            success: false, 
-            message: "YA TIENES UNA SESIÓN ABIERTA CON EL USUARIO EN OTRO DISPOSITIVO" 
-          };
-        }
-        
-        // Set current session
+        // To avoid getting locked out, logging in will explicitly override any existing session,
+        // kicking the other device out.
         await setDoc(userRef, { activeSessionId: sessionId }, { merge: true });
       }
 

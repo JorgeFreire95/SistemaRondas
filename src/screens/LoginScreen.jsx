@@ -82,6 +82,24 @@ const Button = styled.button`
   }
 `;
 
+const AttendanceBtn = styled.button`
+  background: white;
+  color: #1A1A1A;
+  border: 2px solid #1A1A1A;
+  border-radius: 12px;
+  width: 100%;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 12px;
+  transition: all 0.3s;
+
+  &:hover {
+    background: #F8F9FA;
+  }
+`;
+
 
 
 const ErrorMsg = styled.div`
@@ -146,6 +164,9 @@ const LoginScreen = () => {
             />
           </InputGroup>
           <Button type="submit">Ingresar</Button>
+          <AttendanceBtn type="button" onClick={() => navigate('/attendance')}>
+            Registrar Asistencia
+          </AttendanceBtn>
         </form>
       </Card>
     </Container>

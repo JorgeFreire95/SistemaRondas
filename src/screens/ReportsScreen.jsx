@@ -236,6 +236,35 @@ const ReportsScreen = () => {
     return matchesInst && matchesGuard;
   });
 
+  const groupedRounds = React.useMemo(() => {
+    const map = new Map();
+    filteredPoints.forEach(point => {
+      // Use roundId or generate a unique id for offline points without roundId
+      const key = point.roundId && point.roundId !== 'no-round' ? point.roundId : `no-round-${point.timestamp?.toDate().getTime()}`;
+      
+      if (!map.has(key)) {
+        map.set(key, {
+          roundId: point.roundId,
+          guardName: point.guardName,
+          guardRole: point.guardRole,
+          installationId: point.installationId,
+          installationName: point.installationName,
+          roundTime: point.roundTime,
+          timestamp: point.timestamp,
+          points: []
+        });
+      }
+      map.get(key).points.push(point);
+    });
+    
+    // Sort descending by timestamp
+    return Array.from(map.values()).sort((a, b) => {
+      const timeA = a.timestamp?.toDate().getTime() || 0;
+      const timeB = b.timestamp?.toDate().getTime() || 0;
+      return timeB - timeA;
+    });
+  }, [filteredPoints]);
+
   return (
     <Container>
       <Header>
@@ -285,85 +314,71 @@ const ReportsScreen = () => {
       </FilterBar>
 
       <List>
-        {filteredPoints.map((point) => {
-          const installationName = point.installationName || installations[point.installationId] || 'Sistema';
+        {groupedRounds.map((round) => {
+          const installationName = round.installationName || installations[round.installationId] || 'Sistema';
+          const timeLabel = round.roundTime ? `RONDA: ${round.roundTime}` : 'Ronda Libre';
+          const dateLabel = round.timestamp?.toDate().toLocaleDateString('es-CL');
+          const timeGroup = round.timestamp?.toDate().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+
           return (
             <ReportItem 
-              key={point.id} 
-              onClick={() => navigate('/map', { 
+              key={round.roundId || round.timestamp?.toDate().getTime()} 
+              onClick={() => navigate('/round-details', { 
                 state: { 
-                  roundId: point.roundId,
-                  guardName: point.guardName
+                  roundId: round.roundId,
+                  guardName: round.guardName,
+                  points: round.points,
+                  roundTime: round.roundTime,
+                  installationName
                 } 
               })}
             >
               <IconBox>
-                <MapPin size={24} color="#4CAF50" />
+                <Clock size={24} color="#4CAF50" />
               </IconBox>
               <Info>
                 <PointData>
-                  {point.pointName || point.data}
+                  {timeLabel}
                 </PointData>
               <GuardLabel>
-                {point.guardRole ? (
+                {round.guardRole ? (
                   <>
                     <span style={{ fontWeight: '800', color: '#1A1A1A' }}>
-                      {point.guardRole === 'admin' ? 'Administrador' : 
-                       point.guardRole === 'supervisor' ? 'Supervisor' : 
-                       point.guardRole === 'cliente' ? 'Cliente' : 'Guardia'}
-                    </span>: {point.guardName}
+                      {round.guardRole === 'admin' ? 'Administrador' : 
+                       round.guardRole === 'supervisor' ? 'Supervisor' : 
+                       round.guardRole === 'cliente' ? 'Cliente' : 'Guardia'}
+                    </span>: {round.guardName}
                   </>
                 ) : (
-                  <strong>{point.guardName}</strong>
+                  <strong>{round.guardName}</strong>
                 )}
               </GuardLabel>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', marginBottom: '12px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', flexWrap: 'wrap' }}>
                 {installationName && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#E8F5E9', color: '#2E7D32', padding: '2px 8px', borderRadius: '4px', fontWeight: '700' }}>
                     <Building size={12} /> {installationName}
                   </div>
                 )}
-                {point.roundTime && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#F1F3F5', color: '#1A1A1A', padding: '2px 8px', borderRadius: '4px', fontWeight: '800' }}>
-                    <Clock size={12} /> RONDA: {point.roundTime}
-                  </div>
-                )}
-                {!point.roundTime && (
-                  <div style={{ color: '#999', fontSize: '10px' }}>Horario no registrado</div>
-                )}
-              </div>
-              {point.question && (
-                <div style={{ marginBottom: '12px', padding: '10px', background: '#F8F9FA', borderRadius: '8px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#666', marginBottom: '4px' }}>{point.question}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ 
-                      fontSize: '11px', 
-                      fontWeight: '800', 
-                      padding: '2px 8px', 
-                      borderRadius: '4px',
-                      background: point.answer === 'SÍ' ? '#E8F5E9' : '#FFF0F0',
-                      color: point.answer === 'SÍ' ? '#2E7D32' : '#FF4D4F'
-                    }}>{point.answer}</span>
-                    {point.observation && <span style={{ fontSize: '12px', color: '#444' }}>- {point.observation}</span>}
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#F1F3F5', color: '#1A1A1A', padding: '2px 8px', borderRadius: '4px', fontWeight: '800' }}>
+                  <MapPin size={12} /> {round.points.length} {round.points.length === 1 ? 'punto registrado' : 'puntos registrados'}
                 </div>
-              )}
-              <Meta>
+              </div>
+              <Meta style={{ marginTop: '12px' }}>
                 <MetaItem>
                   <Calendar size={14} />
-                  <span>{point.timestamp?.toDate().toLocaleDateString() || '...'}</span>
+                  <span>{dateLabel || '...'}</span>
                 </MetaItem>
                 <MetaItem>
                   <Clock size={14} />
-                  <span>{point.timestamp?.toDate().toLocaleTimeString() || '...'}</span>
+                  <span>{timeGroup || '...'}</span>
                 </MetaItem>
               </Meta>
             </Info>
             </ReportItem>
           );
         })}
-        {scannedPoints.length === 0 && (
-          <p style={{ textAlign: 'center', color: '#888' }}>No hay puntos registrados.</p>
+        {groupedRounds.length === 0 && (
+          <p style={{ textAlign: 'center', color: '#888' }}>No hay rondas registradas.</p>
         )}
       </List>
     </Container>

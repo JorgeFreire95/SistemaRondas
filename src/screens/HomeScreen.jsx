@@ -16,7 +16,8 @@ import {
   Clock,
   List,
   Briefcase,
-  UserCheck
+  UserCheck,
+  CalendarCheck
 } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -414,6 +415,10 @@ const HomeScreen = () => {
                   <MenuBtn onClick={() => navigate('/clients')}>
                     <UserCheck size={32} color="#1A1A1A" />
                     <MenuText>Clientes</MenuText>
+                  </MenuBtn>
+                  <MenuBtn onClick={() => navigate('/admin-attendance')}>
+                    <CalendarCheck size={32} color="#1A1A1A" />
+                    <MenuText>Asistencias</MenuText>
                   </MenuBtn>
                 </>
               )}

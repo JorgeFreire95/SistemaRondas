@@ -234,6 +234,7 @@ const GuardsScreen = () => {
   // Form states
   const [name, setName] = useState('');
   const [rut, setRut] = useState('');
+  const [rutDv, setRutDv] = useState('');
   const [address, setAddress] = useState('');
   const [email, setEmail] = useState('');
   const [selectedInst, setSelectedInst] = useState('');
@@ -246,6 +247,7 @@ const GuardsScreen = () => {
   const [editingGuard, setEditingGuard] = useState(null);
   const [editName, setEditName] = useState('');
   const [editRut, setEditRut] = useState('');
+  const [editRutDv, setEditRutDv] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editInst, setEditInst] = useState('');
@@ -317,15 +319,17 @@ const GuardsScreen = () => {
   }, [guards, sortBy, searchTerm]);
 
   const handleCreateGuard = async () => {
-    if (!name || !rut || !address || !email || !selectedInst) {
+    if (!name || !rut || !rutDv || !address || !email || !selectedInst) {
       return alert('Completa todos los campos');
     }
 
     if (isSubmitting) return;
     setIsSubmitting(true);
 
-    const res = await addUser(email, rut, name, 'guardia', {
-      rut,
+    const fullRut = `${rut.trim()}-${rutDv.trim().toUpperCase()}`;
+
+    const res = await addUser(email, rut.trim(), name, 'guardia', {
+      rut: fullRut,
       address,
       assignedInstallationId: selectedInst,
       assignedSectionId: selectedSectionId || null
@@ -334,6 +338,7 @@ const GuardsScreen = () => {
     if (res.success) {
       setName('');
       setRut('');
+      setRutDv('');
       setAddress('');
       setEmail('');
       setSelectedInst('');
@@ -364,7 +369,16 @@ const GuardsScreen = () => {
   const openEdit = (g) => {
     setEditingGuard(g);
     setEditName(g.name || '');
-    setEditRut(g.rut || '');
+    
+    if (g.rut && g.rut.includes('-')) {
+      const parts = g.rut.split('-');
+      setEditRut(parts[0]);
+      setEditRutDv(parts[1]);
+    } else {
+      setEditRut(g.rut || '');
+      setEditRutDv('');
+    }
+
     setEditAddress(g.address || '');
     setEditEmail(g.email || '');
     setEditInst(g.assignedInstallationId || '');
@@ -373,9 +387,10 @@ const GuardsScreen = () => {
 
   const handleUpdate = async () => {
     try {
+      const fullRut = `${editRut.trim()}-${editRutDv.trim().toUpperCase()}`;
       await updateDoc(doc(db, 'users', editingGuard.id), {
         name: editName,
-        rut: editRut,
+        rut: fullRut,
         address: editAddress,
         email: editEmail,
         assignedInstallationId: editInst,
@@ -408,9 +423,18 @@ const GuardsScreen = () => {
               <Input placeholder="Nombre Completo" value={name} onChange={e => setName(e.target.value)} />
             </InputWrapper>
 
-            <InputWrapper>
-              <IconWrapper><CreditCard size={18} /></IconWrapper>
-              <Input placeholder="RUT" value={rut} onChange={e => setRut(e.target.value)} />
+            <InputWrapper style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <IconWrapper><CreditCard size={18} /></IconWrapper>
+                <Input placeholder="RUT (Sin dígito)" value={rut} onChange={e => setRut(e.target.value)} style={{ marginBottom: 0 }} />
+              </div>
+              <Input 
+                placeholder="DV" 
+                value={rutDv} 
+                onChange={e => setRutDv(e.target.value)} 
+                maxLength={1}
+                style={{ width: '80px', marginBottom: 0 }} 
+              />
             </InputWrapper>
 
             <InputWrapper>
@@ -528,9 +552,18 @@ const GuardsScreen = () => {
               <IconWrapper><Shield size={18} /></IconWrapper>
               <Input placeholder="Nombre Completo" value={editName} onChange={e => setEditName(e.target.value)} />
             </InputWrapper>
-            <InputWrapper>
-              <IconWrapper><CreditCard size={18} /></IconWrapper>
-              <Input placeholder="RUT" value={editRut} onChange={e => setEditRut(e.target.value)} />
+            <InputWrapper style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <IconWrapper><CreditCard size={18} /></IconWrapper>
+                <Input placeholder="RUT (Sin dígito)" value={editRut} onChange={e => setEditRut(e.target.value)} style={{ marginBottom: 0 }} />
+              </div>
+              <Input 
+                placeholder="DV" 
+                value={editRutDv} 
+                onChange={e => setEditRutDv(e.target.value)} 
+                maxLength={1}
+                style={{ width: '80px', marginBottom: 0 }} 
+              />
             </InputWrapper>
             <InputWrapper>
               <IconWrapper><MapPin size={18} /></IconWrapper>
