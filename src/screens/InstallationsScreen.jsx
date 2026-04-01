@@ -4,8 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { collection, query, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, updateDoc, orderBy, where } from 'firebase/firestore';
 import { db, storage } from '../config/firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { ChevronLeft, Building, MapPin, Trash2, Edit2, Clock, X, Plus, Search } from 'lucide-react';
-
+import { ChevronLeft, Building, MapPin, Trash2, Edit2, Clock, X, Plus, Search, Scan, Image as ImageIcon } from 'lucide-react';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { Camera as CapacitorCamera } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 const Container = styled.div`
   display: flex;
   flex-direction: column;
@@ -230,6 +232,75 @@ const Select = styled.select`
   &:focus { border-color: #1A1A1A; }
 `;
 
+const ScannerOverlayWrapper = styled.div`
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  z-index: 3000;
+`;
+
+const ScannerHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  z-index: 10;
+`;
+
+const ScannerContainer = styled.div`
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  video {
+    object-fit: cover !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+`;
+
+const ScannerBoxOverlay = styled.div`
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 250px; height: 250px;
+  border: 3px solid #1A1A1A;
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 10;
+  box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.5);
+`;
+
+const GalleryBtnContainer = styled.div`
+  position: absolute;
+  bottom: 0px;
+  left: 0px;
+  right: 0px;
+  background: white;
+  padding: 20px;
+  border-radius: 20px 20px 0 0;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+`;
+
+const ScannerActionBtn = styled.button`
+  background: #1A1A1A;
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
 const InstallationsScreen = () => {
   const navigate = useNavigate();
   const [installations, setInstallations] = useState([]);
@@ -265,6 +336,9 @@ const InstallationsScreen = () => {
   const [sectionsList, setSectionsList] = useState([]);
   const [newSectionName, setNewSectionName] = useState('');
   const [selectedSectionId, setSelectedSectionId] = useState('');
+
+  const [isScanningAdmin, setIsScanningAdmin] = useState(false);
+  const [scannerInstance, setScannerInstance] = useState(null);
 
   useEffect(() => {
     const unsubInst = onSnapshot(collection(db, 'installations'), (snap) => {
@@ -458,6 +532,91 @@ const InstallationsScreen = () => {
     }
   };
 
+  const startScanner = async () => {
+    setIsScanningAdmin(true);
+    setTimeout(async () => {
+      if (Capacitor.isNativePlatform()) {
+        const perms = await CapacitorCamera.checkPermissions();
+        if (perms.camera !== 'granted') {
+          const req = await CapacitorCamera.requestPermissions();
+          if (req.camera !== 'granted') {
+            alert('Se requiere acceso a la cámara para escanear puntos.');
+            setIsScanningAdmin(false);
+            return;
+          }
+        }
+      }
+
+      const qrCode = new Html5Qrcode('admin-scanner', {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ]
+      });
+      setScannerInstance(qrCode);
+
+      const onScanSuccess = (decodedText) => {
+        qrCode.stop().then(() => {
+          qrCode.clear();
+          setNewPointQR(decodedText);
+          setIsScanningAdmin(false);
+          setScannerInstance(null);
+        }).catch(console.error);
+      };
+
+      try {
+        await qrCode.start(
+          { facingMode: "environment" },
+          { fps: 15, aspectRatio: 1.0 },
+          onScanSuccess
+        );
+      } catch (err) {
+        console.error("Error starting QR Code scanner:", err);
+      }
+    }, 200);
+  };
+
+  const closeScanner = () => {
+    if (scannerInstance && scannerInstance.isScanning) {
+      scannerInstance.stop().then(() => {
+        scannerInstance.clear();
+      }).catch(console.error);
+    }
+    setIsScanningAdmin(false);
+    setScannerInstance(null);
+  };
+
+  useEffect(() => {
+    if (!isScanningAdmin && scannerInstance?.isScanning) {
+      scannerInstance.stop().catch(console.error);
+    }
+    return () => {
+      if (scannerInstance?.isScanning) {
+        scannerInstance.stop().catch(console.error);
+      }
+    };
+  }, [isScanningAdmin, scannerInstance]);
+
+  const handleAdminImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      const html5QrCode = new Html5Qrcode("admin-reader-hidden");
+      const decodedText = await html5QrCode.scanImage(file, true);
+      setNewPointQR(decodedText);
+      closeScanner();
+    } catch (err) {
+      alert("No se detectó ningún código en la imagen.");
+    }
+  };
+
   return (
     <Container>
       <Header>
@@ -599,12 +758,17 @@ const InstallationsScreen = () => {
                 style={{ marginBottom: 0 }}
               />
 
-              <Input 
-                placeholder="Código (ej: BODEGA_01)" 
-                value={newPointQR} 
-                onChange={e => setNewPointQR(e.target.value)}
-                style={{ marginBottom: 0 }}
-              />
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <Input 
+                  placeholder="Código de QR escaneado..." 
+                  value={newPointQR} 
+                  onChange={e => setNewPointQR(e.target.value)}
+                  style={{ marginBottom: 0, flex: 1 }}
+                />
+                <ActionBtn onClick={startScanner} style={{ flex: 'none', background: '#1A1A1A', color: 'white', height: '100%', padding: '12px' }}>
+                  <Scan size={20} />
+                </ActionBtn>
+              </div>
 
               <Input 
                 placeholder="Pregunta (ej: ¿Está cerrado?)" 
@@ -737,6 +901,38 @@ const InstallationsScreen = () => {
           </Modal>
         </ModalOverlay>
       )}
+
+      {/* Admin QR Scanner Modal */}
+      {isScanningAdmin && (
+        <ScannerOverlayWrapper>
+          <ScannerHeader>
+            <h3 style={{ margin: 0 }}>Escanear QR: {newPoint || 'Nuevo Punto'}</h3>
+            <button onClick={closeScanner} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}>
+              <X size={24} />
+            </button>
+          </ScannerHeader>
+          
+          <ScannerContainer>
+            <div id="admin-scanner" style={{ width: '100%', height: '100%' }}></div>
+            <ScannerBoxOverlay />
+          </ScannerContainer>
+
+          <GalleryBtnContainer>
+            <input 
+              type="file" 
+              accept="image/*" 
+              id="admin-file-upload" 
+              hidden 
+              onChange={handleAdminImageUpload} 
+            />
+            <ScannerActionBtn onClick={() => document.getElementById('admin-file-upload').click()}>
+              <ImageIcon size={20} />
+              Seleccionar desde Galería
+            </ScannerActionBtn>
+          </GalleryBtnContainer>
+        </ScannerOverlayWrapper>
+      )}
+      <div id="admin-reader-hidden" style={{ display: 'none' }}></div>
     </Container>
   );
 };

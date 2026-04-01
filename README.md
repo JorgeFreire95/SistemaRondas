@@ -1,70 +1,49 @@
 # Sistema de Rondas - Capacitor Edition 🛡️
 
-Sistema de gestión y monitoreo de rondas de seguridad en tiempo real. Este proyecto ha sido migrado de Expo a un stack web moderno utilizando **Vite**, **React 19** y **Capacitor 6** para ofrecer una experiencia nativa fluida en Android e iOS utilizando tecnologías web de alto rendimiento.
+Sistema de gestión y monitoreo de rondas de seguridad en tiempo real. Este proyecto utiliza un stack web moderno (**Vite**, **React 19**) y **Capacitor 6** para ofrecer una experiencia nativa fluida en Android e iOS utilizando tecnologías web de alto rendimiento.
 
-## 🚀 Tecnologías Principales
+## 🚀 Innovaciones y Rendimiento
 
-*   **Frontend**: [React 19](https://react.dev/) + [Vite](https://vitejs.dev/) (Configurado como ES Modules).
-*   **Móvil**: [Capacitor 6+](https://capacitorjs.com/) para acceso a APIs nativas (Geolocalización, Cámara, FileSystem).
-*   **Backend & DB**: [Firebase](https://firebase.google.com/) (Authentication, Cloud Firestore, Firebase Storage).
-*   **Mapas**: [Leaflet](https://leafletjs.com/) + [React Leaflet](https://react-leaflet.js.org/).
-*   **Diseño**: [Styled Components](https://styled-components.com/) para una UI Premium y [Lucide React](https://lucide.dev/) para iconografía.
-*   **Escáner QR / Código de Barras**: Plugin nativo `@capacitor-mlkit/barcode-scanning` y renderización optimizada de galería de dispositivo.
+### 📸 Motor de Evidencias de "Alta Resiliencia"
+Hemos reconstruido el núcleo de captura de fotos para garantizar que ninguna prueba se pierda, incluso en condiciones de red extremas:
+- **Sistema de Triple Reintento**: La app realiza hasta 3 intentos automáticos de subida si detecta fallos de red.
+- **Procesado "Pluma" (Instantáneo)**: Optimización agresiva de imágenes (20% calidad / 500px) que permite una captura y transición instantánea, ideal para dispositivos de gama baja.
+- **Subida en Segundo Plano**: El guardia puede seguir con su ronda inmediatamente mientras el motor de fondo se encarga de la transmisión de datos.
+- **Caja Negra (Diagnóstico)**: Registro técnico detallado de cada paso de la subida para identificar bloqueos de permisos o red en tiempo real.
 
-## ✨ Funcionalidades Destacadas
+### 📱 Experiencia Móvil Universal
+- **Navegación Nativa**: Integración total con el **botón de retroceso físico** de Android y gestos laterales de iOS para una navegación intuitiva.
+- **Adaptación "Safe Area"**: Diseño compatible con "notches" (muescas de cámara) y barras de gestos, asegurando que ningún botón quede tapado por el hardware del teléfono.
+- **UI Inmersiva**: Configuración de `viewport-fit=cover` para una experiencia de pantalla completa real.
 
-### 👮 Perfil Guardia (Rondas e Ingreso)
-*   **Dashboard Simplificado**: Visualización clara de la instalación asignada y horarios de ronda en tiempo real.
-*   **Sistema de Asistencia QR**: Nuevo módulo integral de registro de entrada y salida de turno mediante escaneo QR. 
-*   **Rondas por Horario**: Selección de horario específico que guía al guardia a través de una lista de puntos.
-*   **Escaneo con Evidencia Fotográfica y Preguntas**: Captura de fotos (desde cámara o galería) para evidenciar anomalías o constatar el estado del punto. Cada punto puede incluir una pregunta de verificación (ej: "¿Bodega cerrada?").
-*   **Seguimiento GPS**: Tracking automático durante la ronda para registrar el recorrido exacto.
+### 🔋 Optimización de Cuota y Datos
+- **Sincronización Inteligente de GPS**: Throttling de ubicación a Firestore (60 segundos o 50 metros) para maximizar la duración de la cuota gratuita (Spark Plan) de Firebase.
+- **Consumo Mínimo de Datos**: Reducción drástica del peso de las evidencias fotográficas y eliminación de logs innecesarios en producción.
 
-### 💼 Perfiles de Monitoreo (Supervisor & Cliente)
-*   **Acceso a Reportes**: Ambos roles pueden visualizar el historial de rondas detallado y generar **Reportes PDF** profesionales.
-*   **Seguimiento de Guardias y Asistencia**: Vista de la gestión de personal para monitorear quién está "EN RONDA", su ubicación en el mapa, y su registro de asistencia al turno.
-*   **Gestión Administrativa Limitada**: Los Administradores cuentan con pantallas dedicadas para registrar y asignar supervisores y clientes a sus respectivas instalaciones.
+## ✨ Funcionalidades Core
+
+### 👮 Perfil Guardia
+- **Asistencia QR**: Registro integral de entrada/salida de turno.
+- **Rondas Guiadas**: Selección de horarios y puntos de marcaje obligatorios.
+- **Preguntas de Seguridad**: Verificación de estado del punto (ej: "¿Puerta cerrada?") con evidencia fotográfica obligatoria.
+- **Alertas de Diagnóstico**: Si una foto falla, el guardia ve un aviso visual claro con el motivo técnico (ej: señal débil).
+
+### 💼 Perfil Monitoreo (Supervisor & Cliente)
+- **Mapa en Vivo**: Seguimiento geoespacial de guardias activos ("En Ronda").
+- **Historial Detallado**: Acceso instantáneo a los puntos marcados con fotos de evidencia.
+- **Reportes PDF**: Generación de reportes profesionales con atribución automática de roles y filtros avanzados.
 
 ### ⚙️ Perfil Administrador (Control Total)
-*   **Control de Asistencia del Personal**: Monitoreo de marcajes de entrada y salida de turno de los guardias, asegurando cobertura en las instalaciones.
-*   **Rondas Administrativas**: Facultad para realizar rondas (con o sin reanudación) en cualquier instalación seleccionando manualmente el horario y controlando el inicio/término.
-*   **Generación de Reportes PDF**: Sistema avanzado de reportes con filtros por fecha, instalación y usuario, incluyendo **atribución automática de roles** (Adm., Superv., Cli., Guardia).
-*   **Gestión Unificada**: CRUD completo de instalaciones, puntos de marcaje (con carga de imágenes a Firebase Storage), horarios, secciones y gestión del personal con validación estricta de **RUT chileno** y autogeneración de contraseñas.
-*   **Monitoreo en Tiempo Real**: 
-    *   **Estado de Guardia**: Indicadores visuales en vivo ("EN RONDA") en las tarjetas de guardias y mapa en vivo con seguimiento geoespacial.
-
-### 🏢 Gestión Avanzada de Instalaciones y Secciones
-*   **Organización por Secciones**: Creación opcional de "Secciones" dentro de cada instalación (ej. Pisos, Zonas, Edificios).
-*   **Asignación Inteligente**: Guardias y puntos de marcaje vinculados a secciones específicas para un control estructurado.
-*   **Filtro Contextual**: Los guardias solo visualizan los puntos y horarios pertinentes a la sección que se les asignó, mejorando la concentración, la usabilidad y la eficiencia.
-
-### 🔐 Seguridad y Rendimiento
-*   **Prevención de Auto-Login**: Aislamiento de sesiones con una instancia secundaria de Firebase Auth para asegurar que los administradores no pierdan su sesión al crear nuevos usuarios guardias/supervisores.
-*   **CORS y Almacenamiento**: Configuración limpia de CORS en Firebase Storage para permitir carga rápida de imágenes tanto en entorno local (Vite) como nativo (Capacitor).
-*   **Control de Eliminación**: Expulsión automática e inmediata (Logout) del sistema si un rol de seguridad borra el perfil de usuario en la base de datos de manera administrativa.
-*   **Cierre de Sesión Automático**: Persistencia de sesión robusta (`browserSessionPersistence`) y manejo seguro de cierre de procesos.
-*   **Protección Contra Doble Envío**: Estados de carga y bloqueos en botones de registro para evitar registros duplicados por error de red o interfaz.
+- **Gestión de Personal**: Validación estricta de RUT chileno y autogeneración de credenciales seguras.
+- **Control de Instalaciones**: Organización por Secciones (Pisos, Zonas) y asignación de puntos de marcaje.
+- **Prevención de Doble Sesión**: Aislamiento de perfiles para evitar conflictos de autenticación durante la creación de usuarios.
 
 ## 🛠️ Instalación y Desarrollo
 
 1.  **Instalar dependencias**: `npm install`
 2.  **Modo desarrollo (Web)**: `npm run dev`
-3.  **Sincronización Android**: `npm run build && npx cap sync`
-4.  **Abrir Android Studio**: `npx cap open android`
-
-## 📁 Estructura del Proyecto
-
-*   `src/context/`: Lógica centralizada (`AuthContext`, `LocationContext`, manejo secundario de auth).
-*   `src/screens/`:
-    *   `HomeScreen.jsx`: Dashboard dinámico multinivel y módulo de asistencia QR.
-    *   `AdminRoundsScreen.jsx`, `RoundDetailsScreen.jsx` & `AdminSchedulesScreen.jsx`: Selección, visualización detallada y ejecución de rondas e historial.
-    *   `AdminAttendanceScreen.jsx`: Visualización general de asistencia del personal.
-    *   `ReportsScreen.jsx` & `PDFScreen.jsx`: Historial visual y motor de generación de reportes PDF detallados.
-    *   `SupervisorsScreen.jsx` & `ClientsScreen.jsx`: Gestión de roles de monitoreo.
-    *   `GuardsScreen.jsx`: Gestión de personal (con validación RUT) y monitoreo de estado ("En ronda").
-    *   `MapScreen.jsx`: Monitoreo geoespacial en vivo.
-    *   `ScannerScreen.jsx`: Visor de cámara para lectura de QR/Barras.
-*   `src/config/`: Conexión de Firebase, instancias de Auth y estilos globales.
+3.  **Sincronización Nativa**: `npm run cap:sync`
+4.  **Despliegue a Dispositivo**: Ejecutar el botón **"Run"** desde Android Studio.
 
 ---
 Desarrollado con ❤️ para la gestión de seguridad inteligente.

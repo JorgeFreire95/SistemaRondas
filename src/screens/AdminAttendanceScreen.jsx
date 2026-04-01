@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Search, LogIn, LogOut, Calendar, Clock, User, Building } from 'lucide-react';
-import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+import { ChevronLeft, Search, LogIn, LogOut, Calendar, Clock, User, Building, Trash2 } from 'lucide-react';
+import { collection, query, onSnapshot, orderBy, writeBatch, getDocs } from 'firebase/firestore';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { db } from '../config/firebase';
 
 const Container = styled.div`
@@ -39,6 +41,40 @@ const Title = styled.h1`
   font-weight: 700;
   margin: 0;
   flex: 1;
+`;
+
+const ClearBtn = styled.button`
+  background: #FFF0F0;
+  color: #FF4D4F;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  &:disabled { opacity: 0.5; }
+`;
+
+const HeaderActions = styled.div`
+  display: flex;
+  gap: 10px;
+`;
+
+const PDFBtn = styled.button`
+  background: #E8F5E9;
+  color: #2E7D32;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 `;
 
 const Content = styled.div`
@@ -145,6 +181,7 @@ const FilterBtn = styled.button`
 
 const AdminAttendanceScreen = () => {
   const navigate = useNavigate();
+  const [isClearing, setIsClearing] = useState(false);
   const [records, setRecords] = useState([]);
   const [installations, setInstallations] = useState([]);
   const [allSections, setAllSections] = useState({});
@@ -215,11 +252,82 @@ const AdminAttendanceScreen = () => {
     };
   };
 
+  const handleClear = async () => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar TODOS los registros de asistencia? Esta acción no se puede deshacer.')) return;
+    
+    setIsClearing(true);
+    try {
+      const q = collection(db, 'attendance');
+      const snapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      
+      snapshot.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      
+      await batch.commit();
+      alert('Todos los registros han sido eliminados.');
+    } catch (error) {
+      console.error("Error clearing attendance records:", error);
+      alert('Error al eliminar los registros.');
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
+  const handleDownloadPDF = () => {
+    const doc = new jsPDF();
+    doc.text("Reporte de Asistencia", 14, 15);
+    
+    const tableColumn = ["Fecha", "Hora", "Tipo", "Nombre", "RUT", "Instalacion", "Seccion"];
+    const tableRows = [];
+
+    filteredRecords.forEach(record => {
+      const { date, time } = formatDate(record.timestamp);
+      const instId = record.assignedInstallationId || usersInfo[record.userId]?.assignedInstallationId;
+      const secId = record.assignedSectionId || usersInfo[record.userId]?.assignedSectionId;
+
+      const instName = instId ? installations.find(i => i.id === instId)?.name : '';
+      const secName = (instId && secId) ? allSections[instId]?.find(s => s.id === secId)?.name : '';
+
+      const recordData = [
+        date,
+        time,
+        record.type === 'ingreso' ? 'Ingreso' : 'Salida',
+        record.userName || 'Usuario',
+        record.rut || '',
+        instName || 'N/A',
+        secName || 'N/A'
+      ];
+      tableRows.push(recordData);
+    });
+
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 20,
+      theme: 'grid',
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [0, 0, 0] }
+    });
+
+    doc.save("Reporte_Asistencia.pdf");
+  };
+
   return (
     <Container>
       <Header>
         <BackBtn onClick={() => navigate(-1)}><ChevronLeft size={20} /></BackBtn>
         <Title>Registro de Asistencia</Title>
+        <HeaderActions>
+          <ClearBtn onClick={handleClear} disabled={isClearing}>
+            <Trash2 size={16} />
+            {isClearing ? 'BORRANDO...' : 'LIMPIAR'}
+          </ClearBtn>
+          <PDFBtn onClick={handleDownloadPDF}>
+            REPORTE PDF
+          </PDFBtn>
+        </HeaderActions>
       </Header>
 
       <Content>

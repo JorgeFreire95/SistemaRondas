@@ -1,7 +1,9 @@
 import React from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LocationProvider } from './context/LocationContext'
+import { App as CapApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 
 import HomeScreen from './screens/HomeScreen'
 import LoginScreen from './screens/LoginScreen'
@@ -36,6 +38,21 @@ const PublicRoute = ({ children }) => {
 }
 
 function AppContent() {
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener('backButton', ({ canGoBack }) => {
+        if (canGoBack) {
+          navigate(-1);
+        } else {
+          // If at the root, minimize the app instead of closing if possible
+          CapApp.exitApp();
+        }
+      });
+    }
+  }, [navigate]);
+
   return (
     <Routes>
       <Route path="/login" element={<PublicRoute><LoginScreen /></PublicRoute>} />

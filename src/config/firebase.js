@@ -28,5 +28,5 @@ setPersistence(auth, browserSessionPersistence)
 export const db = initializeFirestore(app, {
   // Removed experimentalAutoDetectLongPolling due to ca9 crash on Capacitor
 });
-export const storage = getStorage(app);
+export const storage = getStorage(app, "gs://sistemarondas-72799.firebasestorage.app");
 export default app;

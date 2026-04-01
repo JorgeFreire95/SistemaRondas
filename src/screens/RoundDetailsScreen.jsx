@@ -191,6 +191,47 @@ const ObservationText = styled.div`
   font-style: italic;
 `;
 
+const EvidenceImage = styled.img`
+  width: 100%;
+  max-width: 200px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin-top: 12px;
+  border: 2px solid #EEE;
+  cursor: pointer;
+  transition: transform 0.2s;
+  &:active { transform: scale(0.98); }
+`;
+
+const EvidenceLoading = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #FFF9C4;
+  color: #F57F17;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 800;
+  margin-top: 8px;
+  border: 1px solid #FFE082;
+`;
+
+const DiagnosticBadge = styled.div`
+  display: inline-flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  background: #FFF0F0;
+  color: #FF4D4F;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 800;
+  margin-top: 8px;
+  border: 1px solid #FFCCC7;
+  cursor: help;
+`;
+
 // Función auxiliar para parsear timestamps que han perdido sus métodos por react-router
 const getSafeDate = (ts) => {
   if (!ts) return new Date(0);
@@ -279,6 +320,33 @@ const RoundDetailsScreen = () => {
                         <ObservationText>Obs: {point.observation}</ObservationText>
                       )}
                     </QuestionBox>
+                  )}
+
+                  {point.photoUrl && (
+                    <div style={{ marginTop: '12px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '800', color: '#888', marginBottom: '5px', textTransform: 'uppercase' }}>
+                        Evidencia del Sector:
+                      </div>
+                      {point.photoUrl === 'pending' ? (
+                        <EvidenceLoading>
+                          <div className="animate-spin" style={{ width: 12, height: 12, border: '2px solid #F57F17', borderTopColor: 'transparent', borderRadius: '50%' }}></div>
+                          SUBIENDO EVIDENCIA...
+                        </EvidenceLoading>
+                      ) : point.photoUrl && point.photoUrl.startsWith('http') ? (
+                        <EvidenceImage 
+                          src={point.photoUrl} 
+                          alt="Evidencia" 
+                          onClick={() => window.open(point.photoUrl, '_blank')}
+                        />
+                      ) : point.photoError ? (
+                        <DiagnosticBadge onClick={() => alert("Error técnico: " + point.photoError)}>
+                          ⚠️ ERROR DE SUBIDA
+                          <span style={{ fontWeight: 400, opacity: 0.8, fontSize: '9px' }}>Toca para ver detalle</span>
+                        </DiagnosticBadge>
+                      ) : (
+                        <span style={{ fontSize: '12px', color: '#AAA' }}>Sin foto</span>
+                      )}
+                    </div>
                   )}
                 </PointInfo>
               </PointCard>

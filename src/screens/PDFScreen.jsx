@@ -168,19 +168,17 @@ const PDFScreen = () => {
     return Array.from(new Set(scans.map(p => p.guardName))).sort();
   }, [scans]);
 
-  const filteredData = useMemo(() => {
-    return scans.filter(item => {
-      const date = item.timestamp?.toDate();
-      if (!date) return false;
+  const filteredData = scans.filter(item => {
+    const date = item.timestamp?.toDate();
+    if (!date) return false;
 
-      const itemDateStr = date.toISOString().split('T')[0];
-      const isInDateRange = itemDateStr >= startDate && itemDateStr <= endDate;
-      const matchesInst = selInst === 'all' || item.installationId === selInst;
-      const matchesGuard = selGuard === 'all' || item.guardName === selGuard;
+    const itemDateStr = date.toISOString().split('T')[0];
+    const isInDateRange = itemDateStr >= startDate && itemDateStr <= endDate;
+    const matchesInst = selInst === 'all' || item.installationId === selInst;
+    const matchesGuard = selGuard === 'all' || item.guardName === selGuard;
 
-      return isInDateRange && matchesInst && matchesGuard;
-    }).sort((a,b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
-  }, [scans, startDate, endDate, selInst, selGuard]);
+    return isInDateRange && matchesInst && matchesGuard;
+  }).sort((a,b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
 
   const generatePDF = () => {
     const doc = new jsPDF();
@@ -196,7 +194,7 @@ const PDFScreen = () => {
     doc.text(`Rango: ${startDate} al ${endDate}`, 14, 35);
 
     // Table
-    const tableColumn = ["Fecha/Hora", "Guardia", "Instalación", "Punto", "Ronda", "Respuesta", "Obs."];
+    const tableColumn = ["Fecha/Hora", "Guardia", "Instalación", "Punto", "Ronda", "Respuesta", "Obs.", "Foto"];
     const tableRows = [];
 
     filteredData.forEach(item => {
@@ -205,6 +203,9 @@ const PDFScreen = () => {
                         item.guardRole === 'cliente' ? '(Cli.)' : 
                         item.guardRole === 'director' ? '(Dir.)' : '';
       
+      const hasPhoto = item.photoUrl && item.photoUrl !== 'pending' && item.photoUrl.startsWith('http');
+      const isPending = item.photoUrl === 'pending';
+      
       const rowData = [
         item.timestamp?.toDate().toLocaleString() || 'N/A',
         `${item.guardName || 'N/A'} ${roleLabel}`,
@@ -212,7 +213,8 @@ const PDFScreen = () => {
         item.pointName || item.data || 'N/A',
         item.roundTime || 'N/A',
         item.answer || (item.question ? 'Sin resp.' : '-'),
-        item.observation || '-'
+        item.observation || '-',
+        hasPhoto ? 'SÍ' : (isPending ? 'CARGANDO...' : 'NO')
       ];
       tableRows.push(rowData);
     });

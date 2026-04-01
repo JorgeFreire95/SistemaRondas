@@ -7,9 +7,8 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
 import { useLocation } from '../context/LocationContext';
 import { useAuth } from '../context/AuthContext';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
-import { db, storage } from '../config/firebase';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { collection, query, where, onSnapshot, orderBy, updateDoc, doc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { X } from 'lucide-react';
 
 const Container = styled.div`
@@ -64,8 +63,8 @@ const Overlay = styled.div`
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 280px;
-  height: 120px;
+  width: 250px;
+  height: 250px;
   border: 3px solid #4CAF50;
   border-radius: 12px;
   pointer-events: none;
@@ -156,68 +155,59 @@ const ModalOverlay = styled.div`
   z-index: 100;
 `;
 
-const InfoBox = styled.div`
-  position: absolute;
-  bottom: 0px;
-  left: 0px;
-  right: 0px;
-  background: white;
-  padding: 20px;
-  border-radius: 20px 20px 0 0;
-  z-index: 10;
-  box-shadow: 0 -5px 15px rgba(0,0,0,0.1);
+const SuccessOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #FFF;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-`;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  gap: 20px;
+  animation: fadeIn 0.3s ease-out;
 
-const ManualInputWrapper = styled.div`
-  display: flex;
-  gap: 10px;
-`;
-
-const StyledInput = styled.input`
-  flex: 1;
-  padding: 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 16px;
-  &:focus {
-    outline: none;
-    border-color: #4CAF50;
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 `;
 
-const SubmitBtn = styled.button`
-  background: #1A1A1A;
-  color: white;
-  border: none;
-  padding: 10px 15px;
-  border-radius: 8px;
-  font-weight: 700;
-  cursor: pointer;
+const SuccessCircle = styled.div`
+  width: 80px;
+  height: 80px;
+  background: #E8F5E9;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-width: 48px;
-  font-size: 14px;
+  color: #4CAF50;
 `;
+
+const SuccessText = styled.h2`
+  color: #1A1A1A;
+  font-weight: 800;
+  margin: 0;
+`;
+
+
 
 const ScannerScreen = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo');
   const { user } = useAuth();
-  const { addScannedPoint, markingPoints, loadingPoints } = useLocation();
+  const { addScannedPoint, uploadPointPhoto, markingPoints, loadingPoints } = useLocation();
   const roundTime = searchParams.get('time');
   const [lastData, setLastData] = useState(null);
   const [activeQuestion, setActiveQuestion] = useState(null);
-  const [scanner, setScanner] = useState(null);
-  const [manualCode, setManualCode] = useState('');
+  const scannerRef = useRef(null);
   const [isAddingObservation, setIsAddingObservation] = useState(false);
   const [observation, setObservation] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [currentResponse, setCurrentResponse] = useState(null); // { answer, point }
 
   const processCode = async (code) => {
@@ -241,12 +231,15 @@ const ScannerScreen = () => {
     
     if (matchedPoint && matchedPoint.question) {
       // Stop scanner to free camera for the observation photo
-      if (scanner && scanner.isScanning) {
-        scanner.stop().catch(console.error);
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().catch(console.error);
       }
+      // Vibration for detection
+      if (navigator.vibrate) navigator.vibrate(50);
       setActiveQuestion(matchedPoint);
     } else {
-      const success = await addScannedPoint(matchedPoint ? matchedPoint.name : trimmedCode, matchedPoint ? {
+      // Non-blocking submission for raw points or matched simple points
+      addScannedPoint(matchedPoint ? matchedPoint.name : trimmedCode, matchedPoint ? {
         pointId: matchedPoint.id,
         pointName: matchedPoint.name,
         qrCode: trimmedCode,
@@ -256,28 +249,13 @@ const ScannerScreen = () => {
         roundTime: roundTime
       });
 
-      if (success) {
-        if (matchedPoint) {
-           alert(`Punto detectado: ${matchedPoint.name}`);
-          } else if (markingPoints.length === 0) {
-           alert(`ERROR: No hay puntos cargados.\n\nInstalación: ${user?.assignedInstallationId}\n\nDetalles técnicos: la lista de puntos está vacía. Verifica que existan puntos en la subcolección 'markingPoints' de esta instalación.`);
-        } else {
-           const pInfo = markingPoints.map(p => `• ${p.name}: [${p.qrCode}]`).join('\n');
-           const ptsIds = markingPoints.map(p => p.id).join(', ');
-           alert(`Código "${trimmedCode}" no coincide con los puntos.\n\nInstalación: ${user?.assignedInstallationId}\nPuntos (${markingPoints.length}):\n${pInfo}\n\nIDs: ${ptsIds}`);
-        }
-        
-        if (returnTo) navigate(returnTo);
-      }
+      // Immediate vibration and navigation back without waiting for DB response.
+      if (navigator.vibrate) navigator.vibrate(50);
+      if (returnTo) navigate(returnTo, { replace: true });
     }
   };
 
-  const handleManualSubmit = () => {
-    if (manualCode) {
-      processCode(manualCode);
-      setManualCode('');
-    }
-  };
+
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
@@ -292,6 +270,25 @@ const ScannerScreen = () => {
     }
   };
 
+  const takeSectorPhoto = async () => {
+    try {
+      const image = await Camera.getPhoto({
+        quality: 20, // Even lighter for instant processing
+        allowEditing: false,
+        resultType: CameraResultType.Base64, 
+        source: CameraSource.Camera,
+        width: 500 // Ultra-compact for speed
+      });
+
+      if (image && image.base64String) {
+        return image.base64String;
+      }
+    } catch (err) {
+      console.error("Error taking photo:", err);
+    }
+    return null;
+  };
+
   const handleAnswer = async (answer) => {
     const point = activeQuestion;
     setActiveQuestion(null);
@@ -299,47 +296,106 @@ const ScannerScreen = () => {
       setCurrentResponse({ answer, point });
       setIsAddingObservation(true);
     } else {
-      const success = await addScannedPoint(point.name, {
+      // Photo is required for points with questions
+      const base64 = await takeSectorPhoto();
+      if (!base64) {
+         alert("La foto es obligatoria para marcar el punto.");
+         setActiveQuestion(point); // Re-open question if cancelled
+         return;
+      }
+
+      // STEP 1: Mark point IMMEDIATELY in Firestore (with 'pending' status)
+      const docId = await addScannedPoint(point.name, {
         pointId: point.id,
         pointName: point.name,
         question: point.question,
         answer,
         observation: '',
         qrCode: lastData || 'SCAN',
-        roundTime: roundTime
+        roundTime: roundTime,
+        photoUrl: 'pending' 
       });
-      if (success) {
-        alert("Punto marcado con éxito.");
-        if (returnTo) navigate(returnTo);
-      }
+
+      // UI FIRST: Show success immediately then process upload in background
+      setShowSuccess(true);
+      if (navigator.vibrate) navigator.vibrate(50);
+
+      // STEP 2: Background upload (Async)
+      setTimeout(() => {
+        uploadPointPhoto(docId, base64);
+      }, 50);
+
+      setTimeout(() => {
+        if (returnTo) navigate(returnTo, { replace: true });
+      }, 600); // Snappy transition (600ms)
     }
   };
 
   const handleConfirmObservation = async () => {
     if (!observation.trim()) return alert("Por favor, ingresa una observación.");
     setIsAddingObservation(false);
-    const success = await addScannedPoint(currentResponse.point.name, {
+    
+    // Photo is required for points with questions
+    const base64 = await takeSectorPhoto();
+    if (!base64) {
+       alert("La foto es obligatoria para completar la observación.");
+       setIsAddingObservation(true); // Re-open observation if photo fails/cancelled
+       return;
+    }
+
+    // STEP 1: Mark point IMMEDIATELY in Firestore (with 'pending' status)
+    const docId = await addScannedPoint(currentResponse.point.name, {
       pointId: currentResponse.point.id,
       pointName: currentResponse.point.name,
       question: currentResponse.point.question,
       answer: currentResponse.answer,
       observation: observation,
       qrCode: lastData || 'SCAN',
-      roundTime: roundTime
+      roundTime: roundTime,
+      photoUrl: 'pending'
     });
-    if (success) {
-      alert("Punto marcado con éxito.");
-      setObservation('');
-      setCurrentResponse(null);
-      if (returnTo) navigate(returnTo);
-    }
+
+    // UI FIRST
+    setShowSuccess(true);
+    if (navigator.vibrate) navigator.vibrate(50);
+    
+    // STEP 2: Background upload
+    setTimeout(() => {
+      uploadPointPhoto(docId, base64);
+    }, 50);
+    
+    setObservation('');
+    setCurrentResponse(null);
+    
+    setTimeout(() => {
+      if (returnTo) navigate(returnTo, { replace: true });
+    }, 600); 
   };
 
 
 
   useEffect(() => {
+    let isMounted = true;
+
+    const stopAndClear = async () => {
+      if (scannerRef.current) {
+        try {
+          if (scannerRef.current.isScanning) {
+            await scannerRef.current.stop();
+          }
+          await scannerRef.current.clear();
+        } catch (err) {
+          console.error("Error during scanner cleanup:", err);
+        } finally {
+          scannerRef.current = null;
+        }
+      }
+    };
+
     const initScanner = async () => {
-      // Check and request native camera permissions only on native platforms
+      // Always cleanup before starting a new instance
+      await stopAndClear();
+
       if (Capacitor.isNativePlatform()) {
         const perms = await Camera.checkPermissions();
         if (perms.camera !== 'granted') {
@@ -353,6 +409,7 @@ const ScannerScreen = () => {
 
       const qrCode = new Html5Qrcode('reader', {
         formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
           Html5QrcodeSupportedFormats.CODE_128,
           Html5QrcodeSupportedFormats.CODE_39,
           Html5QrcodeSupportedFormats.EAN_13,
@@ -362,17 +419,24 @@ const ScannerScreen = () => {
           Html5QrcodeSupportedFormats.ITF
         ]
       });
-      setScanner(qrCode);
+
+      if (!isMounted) {
+        qrCode.clear();
+        return;
+      }
+
+      scannerRef.current = qrCode;
 
       const onScanSuccess = async (decodedText) => {
-        if (decodedText !== lastData) {
+        // Use a local check to avoid double-processing if lastData updates slowly
+        if (isMounted) {
           await processCode(decodedText);
         }
       };
 
       const config = {
         fps: 20,
-        aspectRatio: 1.77
+        aspectRatio: 1.0
       };
 
       try {
@@ -384,18 +448,15 @@ const ScannerScreen = () => {
       } catch (err) {
         console.error("Error starting QR Code scanner:", err);
       }
-
-      return () => {
-        if (qrCode.isScanning) {
-          qrCode.stop().then(() => {
-            qrCode.clear();
-          }).catch(console.error);
-        }
-      };
     };
 
     initScanner();
-  }, [lastData, roundTime, returnTo]);
+
+    return () => {
+      isMounted = false;
+      stopAndClear();
+    };
+  }, [roundTime, returnTo]); // Removed lastData from dependencies to avoid re-init upon scan success.
 
   return (
     <Container>
@@ -410,6 +471,18 @@ const ScannerScreen = () => {
         <div id="reader" style={{ width: '100%', height: '100%' }}></div>
         <Overlay />
       </ScannerWrapper>
+
+      {showSuccess && (
+        <SuccessOverlay>
+           <SuccessCircle>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+           </SuccessCircle>
+           <SuccessText>Punto Registrado</SuccessText>
+           <span style={{ fontSize: 13, color: '#666' }}>Subiendo evidencia en segundo plano...</span>
+        </SuccessOverlay>
+      )}
 
       {activeQuestion && (
         <ModalOverlay>
@@ -444,37 +517,23 @@ const ScannerScreen = () => {
         </ModalOverlay>
       )}
 
-      {!activeQuestion && !isAddingObservation && !isUploading && (
-        <InfoBox>
-           <ManualInputWrapper>
-             <StyledInput 
-               placeholder="Código manual..." 
-               value={manualCode}
-               onChange={(e) => setManualCode(e.target.value)}
-             />
-             <input 
-               type="file" 
-               accept="image/*" 
-               id="file-upload" 
-               hidden 
-               onChange={handleImageUpload} 
-             />
-             <SubmitBtn onClick={() => document.getElementById('file-upload').click()} title="Escanear desde imagen">
-               <ImageIcon size={20} />
-               <span>Galería</span>
-             </SubmitBtn>
-             <SubmitBtn onClick={handleManualSubmit} style={{ background: '#4CAF50' }}>
-               OK
-             </SubmitBtn>
-           </ManualInputWrapper>
-           
-           {lastData && (
-             <div style={{ borderTop: '1px solid #eee', paddingTop: 10 }}>
-                <strong style={{ display: 'block', fontSize: 12, color: '#666' }}>Último escaneo:</strong>
-                <span style={{ fontSize: 14 }}>{lastData}</span>
-             </div>
-           )}
-        </InfoBox>
+      {lastData && (
+        <div style={{ 
+          position: 'absolute', 
+          bottom: '20px', 
+          left: '20px', 
+          right: '20px', 
+          background: 'rgba(0,0,0,0.6)', 
+          padding: '10px 15px', 
+          borderRadius: '12px',
+          color: 'white',
+          zIndex: 10,
+          textAlign: 'center',
+          backdropFilter: 'blur(10px)'
+        }}>
+           <strong style={{ display: 'block', fontSize: 10, color: '#AAA', textTransform: 'uppercase' }}>Código Detectado:</strong>
+           <span style={{ fontSize: 14, fontWeight: '700' }}>{lastData}</span>
+        </div>
       )}
 
       <div id="reader-hidden" style={{ display: 'none' }}></div>

@@ -2,17 +2,27 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { collection, addDoc, serverTimestamp, query, onSnapshot, orderBy, updateDoc, doc } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { db, storage } from '../config/firebase';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { useAuth } from './AuthContext';
 
 const LocationContext = createContext();
 
 export const LocationProvider = ({ children }) => {
   const { user } = useAuth();
+  
+  // Helper for 'Black Box' diagnostics
+  const addDebugLog = async (step, details = {}) => {
+    // DISABLED for Quota Rescue: Too many writes for Spark Plan.
+    // console.log("Debug Log (Simulated):", step, details);
+  };
+
+  const lastSyncRef = React.useRef({ time: 0, coords: null });
+
   const [location, setLocation] = useState(null);
   const [isTracking, setIsTracking] = useState(false);
   const [currentRoundId, setCurrentRoundId] = useState(null);
-  const [roundData, setRoundData] = useState(null); // { scheduleId, roundTime }
+  const [roundData, setRoundData] = useState(null);
   const [assignedInstData, setAssignedInstData] = useState(null);
   const [locationHistory, setLocationHistory] = useState([]);
   const [scannedPoints, setScannedPoints] = useState([]);
@@ -111,9 +121,10 @@ export const LocationProvider = ({ children }) => {
   const addScannedPoint = async (data, extra = {}) => {
     if (location && user) {
       try {
-        await addDoc(collection(db, 'scannedPoints'), {
+        const docRef = await addDoc(collection(db, 'scannedPoints'), {
           data,
           ...extra,
+          photoUrl: extra.photoUrl || null, // Ensure field exists
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
           timestamp: serverTimestamp(),
@@ -125,13 +136,75 @@ export const LocationProvider = ({ children }) => {
           installationName: assignedInstData?.name || 'Sistema',
           roundTime: extra.roundTime || roundData?.roundTime || null
         });
-        return true;
+        return docRef.id;
       } catch (e) {
         console.error("Error adding document: ", e);
-        return false;
+        return null;
       }
     }
-    return false;
+    return null;
+  };
+
+  const uploadPointPhoto = async (docId, base64) => {
+    if (!docId) { alert("Diagnostic: Missing DocID"); return; }
+    if (!base64) { alert("Diagnostic: Missing Photo Data"); return; }
+    if (!user) { alert("Diagnostic: Missing User Auth"); return; }
+    
+    await addDebugLog("upload_start", { docId, dataSize: base64.length });
+
+    // WATCHDOG: Force clear 'pending' status after 50 seconds (longer for retries)
+    const watchdog = setTimeout(async () => {
+      try {
+        console.warn("Watchdog triggered: Upload timeout.");
+        await updateDoc(doc(db, 'scannedPoints', docId), {
+          photoUrl: null,
+          photoError: 'timeout_50s'
+        });
+        await addDebugLog("upload_timeout", { docId });
+      } catch (e) {
+        console.error("Watchdog update failed:", e);
+      }
+    }, 50000);
+
+    let attempts = 0;
+    while (attempts < 3) {
+      attempts++;
+      try {
+        await addDebugLog("upload_attempt", { docId, attempt: attempts });
+        
+        const fileName = `evidencias_rondas/${Date.now()}_att${attempts}.jpg`;
+        const storageRef = ref(storage, fileName);
+        
+        // Use uploadString with 'base64'
+        await uploadString(storageRef, base64, 'base64');
+        const downloadURL = await getDownloadURL(storageRef);
+        
+        clearTimeout(watchdog);
+        await updateDoc(doc(db, 'scannedPoints', docId), {
+          photoUrl: downloadURL,
+          photoError: null
+        });
+        
+        await addDebugLog("upload_success", { docId, url: downloadURL });
+        return downloadURL;
+      } catch (err) {
+        console.error(`Attempt ${attempts} failed:`, err);
+        await addDebugLog("upload_fail", { docId, attempt: attempts, error: err.code || err.message });
+        
+        if (attempts >= 3) {
+          clearTimeout(watchdog);
+          window.alert(`FALLO TOTAL (3 reintentos): ${err.code || err.message}`);
+          await updateDoc(doc(db, 'scannedPoints', docId), {
+            photoUrl: null,
+            photoError: `failed_after_3_tries_${err.code || 'unknown'}`
+          });
+        } else {
+          // Wait 2 seconds before next attempt
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+    }
+    return null;
   };
 
   // Effect for basic location watching (always on when logged in)
@@ -233,29 +306,40 @@ export const LocationProvider = ({ children }) => {
     setIsTracking(true);
   };
 
-  // Effect for syncing path to Firestore during an active round
+  // Effect for syncing path to Firestore during an active round (THROTTLED for Quota Rescue)
   useEffect(() => {
     if (isTracking && currentRoundId && location) {
-      const newPoint = { lat: location.coords.latitude, lng: location.coords.longitude };
+      const now = Date.now();
+      const coords = location.coords;
       
-      // Update local history
-      setLocationHistory(prev => {
-        // Prevent duplicate consecutive points if needed, but for now simple append
-        return [...prev, newPoint];
-      });
+      // Calculate distance if we have previous coords
+      let distanceMoved = 999;
+      if (lastSyncRef.current.coords) {
+        const last = lastSyncRef.current.coords;
+        distanceMoved = Math.sqrt(
+          Math.pow(coords.latitude - last.latitude, 2) + 
+          Math.pow(coords.longitude - last.longitude, 2)
+        ) * 111320; // Approx meters
+      }
 
-      // Sync to Firestore
+      // ONLY SYNC if 60 seconds passed OR moved more than 50 meters
+      if (now - lastSyncRef.current.time < 60000 && distanceMoved < 50) {
+        return; 
+      }
+
       const syncPoint = async () => {
         try {
-          // Sync live location to user doc for remote monitoring
+          lastSyncRef.current = { time: now, coords: { latitude: coords.latitude, longitude: coords.longitude } };
+          
+          const newPoint = { lat: coords.latitude, lng: coords.longitude };
+          
           await updateDoc(doc(db, 'users', user.uid), {
-            currentLat: location.coords.latitude,
-            currentLng: location.coords.longitude,
+            currentLat: coords.latitude,
+            currentLng: coords.longitude,
             lastLocationUpdate: serverTimestamp(),
             activeRoundId: currentRoundId
           });
 
-          // Add to permanent path history
           await addDoc(collection(db, 'rounds', currentRoundId, 'path'), {
             ...newPoint,
             timestamp: serverTimestamp()
@@ -284,7 +368,8 @@ export const LocationProvider = ({ children }) => {
         startNewRound,
         resumeRound,
         setAdminInstallationId,
-        effectiveInstId
+        effectiveInstId,
+        uploadPointPhoto
       }}
     >
       {children}
