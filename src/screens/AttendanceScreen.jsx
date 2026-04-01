@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, LogIn, LogOut, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, LogIn, LogOut, CheckCircle2, MapPin, Building, User as UserIcon } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
-import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { Capacitor } from '@capacitor/core';
 import { Camera } from '@capacitor/camera';
+
 
 const Container = styled.div`
   display: flex;
@@ -128,6 +129,34 @@ const ResultRut = styled.p`
   font-size: 16px;
   color: #666;
   margin: 0;
+  margin-bottom: 8px;
+`;
+
+const ResultLocation = styled.div`
+  background: #F1F3F5;
+  padding: 12px 16px;
+  border-radius: 12px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+`;
+
+const LocationTitle = styled.span`
+  font-size: 11px;
+  font-weight: 800;
+  color: #888;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+`;
+
+const LocationName = styled.span`
+  font-size: 14px;
+  font-weight: 700;
+  color: #1A1A1A;
 `;
 
 const ConfirmBtn = styled.button`
@@ -241,7 +270,35 @@ const AttendanceScreen = () => {
             setMode(null);
           } else {
             const userData = querySnapshot.docs[0].data();
-            setScannedUser({ id: querySnapshot.docs[0].id, ...userData });
+            const user = { id: querySnapshot.docs[0].id, ...userData };
+            
+            // Fetch installation and section names (Try/Catch to avoid blocking if permissions are restricted)
+            let instName = null;
+            let secName = null;
+
+            try {
+              if (user.assignedInstallationId) {
+                const instSnap = await getDoc(doc(db, 'installations', user.assignedInstallationId));
+                if (instSnap.exists()) {
+                  instName = instSnap.data().name;
+                  if (user.assignedSectionId) {
+                    const secSnap = await getDoc(doc(db, 'installations', user.assignedInstallationId, 'sections', user.assignedSectionId));
+                    if (secSnap.exists()) {
+                      secName = secSnap.data().name;
+                    }
+                  }
+                }
+              }
+            } catch (permError) {
+              console.warn("No se pudieron obtener los nombres de ubicación (posible falta de permisos):", permError);
+              // Seguir sin nombres si hay error de permisos
+            }
+
+            setScannedUser({ 
+              ...user, 
+              assignedInstallationName: instName, 
+              assignedSectionName: secName 
+            });
           }
         } catch (error) {
           console.error("Error validando QR:", error);
@@ -282,7 +339,9 @@ const AttendanceScreen = () => {
         userName: scannedUser.name || 'Sin nombre',
         rut: scannedUser.rut,
         assignedInstallationId: scannedUser.assignedInstallationId || null,
+        assignedInstallationName: scannedUser.assignedInstallationName || null,
         assignedSectionId: scannedUser.assignedSectionId || null,
+        assignedSectionName: scannedUser.assignedSectionName || null,
         type: mode, // 'ingreso' o 'salida'
         timestamp: serverTimestamp()
       });
@@ -343,6 +402,19 @@ const AttendanceScreen = () => {
               <ResultName>{scannedUser.name}</ResultName>
               <ResultRut>RUT: {scannedUser.rut}</ResultRut>
             </div>
+            
+            {scannedUser.assignedInstallationName && (
+              <ResultLocation>
+                <LocationTitle><Building size={12}/> Instalación Asignada</LocationTitle>
+                <LocationName>{scannedUser.assignedInstallationName}</LocationName>
+                {scannedUser.assignedSectionName && (
+                   <>
+                     <LocationTitle style={{ marginTop: '8px' }}><MapPin size={12}/> Sección</LocationTitle>
+                     <LocationName>{scannedUser.assignedSectionName}</LocationName>
+                   </>
+                )}
+              </ResultLocation>
+            )}
             <ConfirmBtn onClick={handleConfirm}>
               Confirmar {mode === 'ingreso' ? 'Ingreso' : 'Salida'}
             </ConfirmBtn>

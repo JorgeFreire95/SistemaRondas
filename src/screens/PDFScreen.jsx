@@ -194,7 +194,7 @@ const PDFScreen = () => {
     doc.text(`Rango: ${startDate} al ${endDate}`, 14, 35);
 
     // Table
-    const tableColumn = ["Fecha/Hora", "Guardia", "Instalación", "Punto", "Ronda", "Respuesta", "Obs.", "Foto"];
+    const tableColumn = ["Fecha/Hora", "Guardia", "Instalación", "Punto", "Ronda", "Respuesta", "Obs."];
     const tableRows = [];
 
     filteredData.forEach(item => {
@@ -202,9 +202,6 @@ const PDFScreen = () => {
                         item.guardRole === 'supervisor' ? '(Superv.)' : 
                         item.guardRole === 'cliente' ? '(Cli.)' : 
                         item.guardRole === 'director' ? '(Dir.)' : '';
-      
-      const hasPhoto = item.photoUrl && item.photoUrl !== 'pending' && item.photoUrl.startsWith('http');
-      const isPending = item.photoUrl === 'pending';
       
       const rowData = [
         item.timestamp?.toDate().toLocaleString() || 'N/A',
@@ -214,7 +211,6 @@ const PDFScreen = () => {
         item.roundTime || 'N/A',
         item.answer || (item.question ? 'Sin resp.' : '-'),
         item.observation || '-',
-        hasPhoto ? 'SÍ' : (isPending ? 'CARGANDO...' : 'NO')
       ];
       tableRows.push(rowData);
     });

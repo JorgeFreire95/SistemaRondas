@@ -3,7 +3,7 @@ import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { collection, addDoc, serverTimestamp, query, onSnapshot, orderBy, updateDoc, doc } from 'firebase/firestore';
 import { db, storage } from '../config/firebase';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from './AuthContext';
 
 const LocationContext = createContext();
@@ -145,6 +145,27 @@ export const LocationProvider = ({ children }) => {
     return null;
   };
 
+  // Helper to convert base64 to Blob
+  const base64ToBlob = (base64, contentType = 'image/jpeg') => {
+    try {
+      const byteCharacters = atob(base64);
+      const byteArrays = [];
+      for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+        const slice = byteCharacters.slice(offset, offset + 512);
+        const byteNumbers = new Array(slice.length);
+        for (let i = 0; i < slice.length; i++) {
+          byteNumbers[i] = slice.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        byteArrays.push(byteArray);
+      }
+      return new Blob(byteArrays, { type: contentType });
+    } catch (e) {
+      console.error("Error converting base64 to blob:", e);
+      return null;
+    }
+  };
+
   const uploadPointPhoto = async (docId, base64) => {
     if (!docId) { alert("Diagnostic: Missing DocID"); return; }
     if (!base64) { alert("Diagnostic: Missing Photo Data"); return; }
@@ -175,8 +196,11 @@ export const LocationProvider = ({ children }) => {
         const fileName = `evidencias_rondas/${Date.now()}_att${attempts}.jpg`;
         const storageRef = ref(storage, fileName);
         
-        // Use uploadString with 'base64'
-        await uploadString(storageRef, base64, 'base64');
+        // Convert base64 to Blob and use uploadBytes
+        const blob = base64ToBlob(base64);
+        if (!blob) throw new Error("Could not convert base64 to blob");
+        
+        await uploadBytes(storageRef, blob);
         const downloadURL = await getDownloadURL(storageRef);
         
         clearTimeout(watchdog);

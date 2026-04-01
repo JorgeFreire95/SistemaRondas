@@ -287,8 +287,8 @@ const AdminAttendanceScreen = () => {
       const instId = record.assignedInstallationId || usersInfo[record.userId]?.assignedInstallationId;
       const secId = record.assignedSectionId || usersInfo[record.userId]?.assignedSectionId;
 
-      const instName = instId ? installations.find(i => i.id === instId)?.name : '';
-      const secName = (instId && secId) ? allSections[instId]?.find(s => s.id === secId)?.name : '';
+      const instName = record.assignedInstallationName || (instId ? installations.find(i => i.id === instId)?.name : '');
+      const secName = record.assignedSectionName || ((instId && secId) ? allSections[instId]?.find(s => s.id === secId)?.name : '');
 
       const recordData = [
         date,
@@ -359,8 +359,8 @@ const AdminAttendanceScreen = () => {
             const instId = record.assignedInstallationId || usersInfo[record.userId]?.assignedInstallationId;
             const secId = record.assignedSectionId || usersInfo[record.userId]?.assignedSectionId;
 
-            const instName = instId ? installations.find(i => i.id === instId)?.name : null;
-            const secName = (instId && secId) ? allSections[instId]?.find(s => s.id === secId)?.name : null;
+            const instName = record.assignedInstallationName || (instId ? installations.find(i => i.id === instId)?.name : null);
+            const secName = record.assignedSectionName || ((instId && secId) ? allSections[instId]?.find(s => s.id === secId)?.name : null);
 
             return (
               <RecordItem key={record.id}>

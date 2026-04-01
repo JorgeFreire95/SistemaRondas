@@ -270,25 +270,6 @@ const ScannerScreen = () => {
     }
   };
 
-  const takeSectorPhoto = async () => {
-    try {
-      const image = await Camera.getPhoto({
-        quality: 20, // Even lighter for instant processing
-        allowEditing: false,
-        resultType: CameraResultType.Base64, 
-        source: CameraSource.Camera,
-        width: 500 // Ultra-compact for speed
-      });
-
-      if (image && image.base64String) {
-        return image.base64String;
-      }
-    } catch (err) {
-      console.error("Error taking photo:", err);
-    }
-    return null;
-  };
-
   const handleAnswer = async (answer) => {
     const point = activeQuestion;
     setActiveQuestion(null);
@@ -296,16 +277,8 @@ const ScannerScreen = () => {
       setCurrentResponse({ answer, point });
       setIsAddingObservation(true);
     } else {
-      // Photo is required for points with questions
-      const base64 = await takeSectorPhoto();
-      if (!base64) {
-         alert("La foto es obligatoria para marcar el punto.");
-         setActiveQuestion(point); // Re-open question if cancelled
-         return;
-      }
-
-      // STEP 1: Mark point IMMEDIATELY in Firestore (with 'pending' status)
-      const docId = await addScannedPoint(point.name, {
+      // STEP 1: Mark point IMMEDIATELY in Firestore
+      await addScannedPoint(point.name, {
         pointId: point.id,
         pointName: point.name,
         question: point.question,
@@ -313,17 +286,12 @@ const ScannerScreen = () => {
         observation: '',
         qrCode: lastData || 'SCAN',
         roundTime: roundTime,
-        photoUrl: 'pending' 
+        photoUrl: null 
       });
 
-      // UI FIRST: Show success immediately then process upload in background
+      // UI FIRST: Show success immediately
       setShowSuccess(true);
       if (navigator.vibrate) navigator.vibrate(50);
-
-      // STEP 2: Background upload (Async)
-      setTimeout(() => {
-        uploadPointPhoto(docId, base64);
-      }, 50);
 
       setTimeout(() => {
         if (returnTo) navigate(returnTo, { replace: true });
@@ -335,16 +303,8 @@ const ScannerScreen = () => {
     if (!observation.trim()) return alert("Por favor, ingresa una observación.");
     setIsAddingObservation(false);
     
-    // Photo is required for points with questions
-    const base64 = await takeSectorPhoto();
-    if (!base64) {
-       alert("La foto es obligatoria para completar la observación.");
-       setIsAddingObservation(true); // Re-open observation if photo fails/cancelled
-       return;
-    }
-
-    // STEP 1: Mark point IMMEDIATELY in Firestore (with 'pending' status)
-    const docId = await addScannedPoint(currentResponse.point.name, {
+    // STEP 1: Mark point IMMEDIATELY in Firestore
+    await addScannedPoint(currentResponse.point.name, {
       pointId: currentResponse.point.id,
       pointName: currentResponse.point.name,
       question: currentResponse.point.question,
@@ -352,17 +312,12 @@ const ScannerScreen = () => {
       observation: observation,
       qrCode: lastData || 'SCAN',
       roundTime: roundTime,
-      photoUrl: 'pending'
+      photoUrl: null
     });
 
     // UI FIRST
     setShowSuccess(true);
     if (navigator.vibrate) navigator.vibrate(50);
-    
-    // STEP 2: Background upload
-    setTimeout(() => {
-      uploadPointPhoto(docId, base64);
-    }, 50);
     
     setObservation('');
     setCurrentResponse(null);
@@ -480,7 +435,6 @@ const ScannerScreen = () => {
               </svg>
            </SuccessCircle>
            <SuccessText>Punto Registrado</SuccessText>
-           <span style={{ fontSize: 13, color: '#666' }}>Subiendo evidencia en segundo plano...</span>
         </SuccessOverlay>
       )}
 
