@@ -389,6 +389,23 @@ const HomeScreen = () => {
                 <MenuText>Reportes</MenuText>
               </MenuBtn>
 
+              {user?.role === 'admin' && (
+                <>
+                  <MenuBtn onClick={() => navigate('/admin-attendance')}>
+                    <CalendarCheck size={32} color="#1A1A1A" />
+                    <MenuText>Asistencias</MenuText>
+                  </MenuBtn>
+                  <MenuBtn onClick={() => navigate('/admin-rounds')}>
+                    <List size={32} color="#1A1A1A" />
+                    <MenuText>Rondas</MenuText>
+                  </MenuBtn>
+                  <MenuBtn onClick={() => navigate('/installations')}>
+                    <Building size={32} color="#1A1A1A" />
+                    <MenuText>Instalaciones</MenuText>
+                  </MenuBtn>
+                </>
+              )}
+
               <MenuBtn onClick={() => navigate('/guards')}>
                 <Shield size={32} color="#1A1A1A" />
                 <MenuText>Guardias</MenuText>
@@ -396,18 +413,6 @@ const HomeScreen = () => {
 
               {user?.role === 'admin' && (
                 <>
-                  <MenuBtn onClick={() => navigate('/admin')}>
-                    <Users size={32} color="#1A1A1A" />
-                    <MenuText>Usuarios</MenuText>
-                  </MenuBtn>
-                  <MenuBtn onClick={() => navigate('/installations')}>
-                    <Building size={32} color="#1A1A1A" />
-                    <MenuText>Instalaciones</MenuText>
-                  </MenuBtn>
-                  <MenuBtn onClick={() => navigate('/admin-rounds')}>
-                    <List size={32} color="#1A1A1A" />
-                    <MenuText>Rondas</MenuText>
-                  </MenuBtn>
                   <MenuBtn onClick={() => navigate('/supervisors')}>
                     <Briefcase size={32} color="#1A1A1A" />
                     <MenuText>Supervisores</MenuText>
@@ -416,9 +421,9 @@ const HomeScreen = () => {
                     <UserCheck size={32} color="#1A1A1A" />
                     <MenuText>Clientes</MenuText>
                   </MenuBtn>
-                  <MenuBtn onClick={() => navigate('/admin-attendance')}>
-                    <CalendarCheck size={32} color="#1A1A1A" />
-                    <MenuText>Asistencias</MenuText>
+                  <MenuBtn onClick={() => navigate('/admin')}>
+                    <Users size={32} color="#1A1A1A" />
+                    <MenuText>Administrador</MenuText>
                   </MenuBtn>
                 </>
               )}

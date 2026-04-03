@@ -220,6 +220,7 @@ const AdminScreen = () => {
   // Form states
   const [name, setName] = useState('');
   const [rut, setRut] = useState('');
+  const [rutDv, setRutDv] = useState('');
   const [address, setAddress] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('admin');
@@ -228,6 +229,7 @@ const AdminScreen = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [editName, setEditName] = useState('');
   const [editRut, setEditRut] = useState('');
+  const [editRutDv, setEditRutDv] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editRole, setEditRole] = useState('');
@@ -261,19 +263,21 @@ const AdminScreen = () => {
   }, [users, searchTerm, sortBy]);
 
   const handleCreateUser = async () => {
-    if (!email || !name || !rut) return alert('Por favor, completa los campos mínimos (Nombre, Email, RUT)');
+    if (!email || !name || !rut || !rutDv) return alert('Por favor, completa los campos mínimos (Nombre, Email, RUT completo)');
     
     if (isSubmitting) return;
     setIsSubmitting(true);
 
-    const res = await addUser(email, rut, name, role, { 
-      rut, 
+    const fullRut = `${rut.trim()}-${rutDv.trim().toUpperCase()}`;
+
+    const res = await addUser(email, rut.trim(), name, role, { 
+      rut: fullRut, 
       address,
       createdAt: new Date().toISOString()
     });
 
     if (res.success) {
-      setEmail(''); setName(''); setRut(''); setAddress('');
+      setEmail(''); setName(''); setRut(''); setRutDv(''); setAddress('');
       alert('Usuario ' + role + ' creado con éxito');
     } else {
       let msg = res.message;
@@ -297,7 +301,16 @@ const AdminScreen = () => {
   const openEdit = (u) => {
     setEditingUser(u);
     setEditName(u.name || '');
-    setEditRut(u.rut || '');
+    
+    if (u.rut && u.rut.includes('-')) {
+      const parts = u.rut.split('-');
+      setEditRut(parts[0]);
+      setEditRutDv(parts[1]);
+    } else {
+      setEditRut(u.rut || '');
+      setEditRutDv('');
+    }
+
     setEditAddress(u.address || '');
     setEditEmail(u.email || '');
     setEditRole(u.role || 'admin');
@@ -305,9 +318,10 @@ const AdminScreen = () => {
 
   const handleUpdate = async () => {
     try {
+      const fullRut = `${editRut.trim()}-${editRutDv.trim().toUpperCase()}`;
       await updateDoc(doc(db, 'users', editingUser.uid), {
         name: editName,
-        rut: editRut,
+        rut: fullRut,
         address: editAddress,
         email: editEmail,
         role: editRole
@@ -321,21 +335,30 @@ const AdminScreen = () => {
     <Container>
       <Header>
         <BackBtn onClick={() => navigate(-1)}><ChevronLeft size={20} /></BackBtn>
-        <Title>Gestión de Usuarios</Title>
+        <Title>Gestión de Administradores</Title>
       </Header>
 
       <Content>
         <Card>
-          <CardTitle>Añadir Nuevo Usuario</CardTitle>
+          <CardTitle>Añadir Nuevo Administrador</CardTitle>
           
           <InputWrapper>
             <IconWrapper><User size={18} /></IconWrapper>
             <Input placeholder="Nombre Completo" value={name} onChange={e => setName(e.target.value)} />
           </InputWrapper>
 
-          <InputWrapper>
-            <IconWrapper><CreditCard size={18} /></IconWrapper>
-            <Input placeholder="RUT" value={rut} onChange={e => setRut(e.target.value)} />
+          <InputWrapper style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <IconWrapper><CreditCard size={18} /></IconWrapper>
+              <Input placeholder="RUT (Sin dígito)" value={rut} onChange={e => setRut(e.target.value)} style={{ marginBottom: 0 }} />
+            </div>
+            <Input 
+              placeholder="DV" 
+              value={rutDv} 
+              onChange={e => setRutDv(e.target.value)} 
+              maxLength={1}
+              style={{ width: '80px', marginBottom: 0 }} 
+            />
           </InputWrapper>
 
           <InputWrapper>
@@ -353,7 +376,7 @@ const AdminScreen = () => {
           </CreateBtn>
         </Card>
 
-        <CardTitle>Usuarios Registrados (Admins / Directores)</CardTitle>
+        <CardTitle>Administradores Registrados (Admins / Directores)</CardTitle>
         
         <div style={{ position: 'relative', marginBottom: '15px' }}>
           <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#888' }} />
@@ -412,9 +435,18 @@ const AdminScreen = () => {
               <IconWrapper><User size={18} /></IconWrapper>
               <Input placeholder="Nombre" value={editName} onChange={e => setEditName(e.target.value)} />
             </InputWrapper>
-            <InputWrapper>
-              <IconWrapper><CreditCard size={18} /></IconWrapper>
-              <Input placeholder="RUT" value={editRut} onChange={e => setEditRut(e.target.value)} />
+            <InputWrapper style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <IconWrapper><CreditCard size={18} /></IconWrapper>
+                <Input placeholder="RUT (Sin dígito)" value={editRut} onChange={e => setEditRut(e.target.value)} style={{ marginBottom: 0 }} />
+              </div>
+              <Input 
+                placeholder="DV" 
+                value={editRutDv} 
+                onChange={e => setEditRutDv(e.target.value)} 
+                maxLength={1}
+                style={{ width: '80px', marginBottom: 0 }} 
+              />
             </InputWrapper>
             <InputWrapper>
               <IconWrapper><MapPin size={18} /></IconWrapper>
