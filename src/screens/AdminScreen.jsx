@@ -5,8 +5,7 @@ import {
   ChevronLeft, UserPlus, Shield, Mail, CreditCard, 
   MapPin, Trash2, Edit2, X, Search, User, Briefcase
 } from 'lucide-react';
-import { collection, query, onSnapshot, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 import { useAuth } from '../context/AuthContext';
 
 const Container = styled.div`
@@ -235,12 +234,18 @@ const AdminScreen = () => {
   const [editRole, setEditRole] = useState('');
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users'), (snap) => {
-      // Filter out guards if they're managed elsewhere, or show all non-guards
-      // The user asked for "gestion de usuario" (likely non-guards)
-      setUsers(snap.docs.map(doc => ({ uid: doc.id, ...doc.data() })));
-    });
-    return unsub;
+    const fetchUsers = async () => {
+      const { data } = await supabase.from('users').select('*');
+      if (data) setUsers(data.map(d => ({ uid: d.id, name: d.name, email: d.email, role: d.role, rut: d.rut, dv: d.dv, address: d.address })));
+    };
+    fetchUsers();
+
+    const channel = supabase
+      .channel('admin-users')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchUsers())
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, []);
 
   const sortedAndFilteredUsers = useMemo(() => {
@@ -292,7 +297,7 @@ const AdminScreen = () => {
   const handleDelete = async (uid) => {
     if (window.confirm('¿Eliminar este usuario de forma permanente?')) {
       try {
-        await deleteDoc(doc(db, 'users', uid));
+        await supabase.from('users').delete().eq('id', uid);
         alert('Usuario eliminado');
       } catch (err) { console.error(err); alert('Error al eliminar'); }
     }
@@ -319,13 +324,13 @@ const AdminScreen = () => {
   const handleUpdate = async () => {
     try {
       const fullRut = `${editRut.trim()}-${editRutDv.trim().toUpperCase()}`;
-      await updateDoc(doc(db, 'users', editingUser.uid), {
+      await supabase.from('users').update({
         name: editName,
         rut: fullRut,
         address: editAddress,
         email: editEmail,
         role: editRole
-      });
+      }).eq('id', editingUser.uid);
       setEditingUser(null);
       alert('Usuario actualizado');
     } catch (err) { console.error(err); alert('Error al actualizar'); }

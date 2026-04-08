@@ -3,8 +3,7 @@ import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, LogIn, LogOut, CheckCircle2, MapPin, Building, User as UserIcon } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 import { Capacitor } from '@capacitor/core';
 import { Camera } from '@capacitor/camera';
 
@@ -261,37 +260,49 @@ const AttendanceScreen = () => {
 
           const rut = extractRut(decodedText);
           
-          // Buscar usuario en Firestore
-          const q = query(collection(db, 'users'), where('rut', '==', rut));
-          const querySnapshot = await getDocs(q);
+          // Buscar usuario en Supabase
+          const { data: usersData, error: usersError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('rut', rut);
           
-          if (querySnapshot.empty) {
+          if (usersError || !usersData || usersData.length === 0) {
             alert(`No se encontró ningún usuario con el RUT: ${rut}`);
             setMode(null);
           } else {
-            const userData = querySnapshot.docs[0].data();
-            const user = { id: querySnapshot.docs[0].id, ...userData };
+            const userData = usersData[0];
+            const user = { 
+              id: userData.id, 
+              name: userData.name, 
+              rut: userData.rut,
+              assignedInstallationId: userData.assigned_installation_id,
+              assignedSectionId: userData.assigned_section_id
+            };
             
-            // Fetch installation and section names (Try/Catch to avoid blocking if permissions are restricted)
             let instName = null;
             let secName = null;
 
             try {
               if (user.assignedInstallationId) {
-                const instSnap = await getDoc(doc(db, 'installations', user.assignedInstallationId));
-                if (instSnap.exists()) {
-                  instName = instSnap.data().name;
+                const { data: instData } = await supabase
+                  .from('installations')
+                  .select('name')
+                  .eq('id', user.assignedInstallationId)
+                  .single();
+                if (instData) {
+                  instName = instData.name;
                   if (user.assignedSectionId) {
-                    const secSnap = await getDoc(doc(db, 'installations', user.assignedInstallationId, 'sections', user.assignedSectionId));
-                    if (secSnap.exists()) {
-                      secName = secSnap.data().name;
-                    }
+                    const { data: secData } = await supabase
+                      .from('sections')
+                      .select('name')
+                      .eq('id', user.assignedSectionId)
+                      .single();
+                    if (secData) secName = secData.name;
                   }
                 }
               }
             } catch (permError) {
-              console.warn("No se pudieron obtener los nombres de ubicación (posible falta de permisos):", permError);
-              // Seguir sin nombres si hay error de permisos
+              console.warn("No se pudieron obtener los nombres de ubicación:", permError);
             }
 
             setScannedUser({ 
@@ -302,7 +313,7 @@ const AttendanceScreen = () => {
           }
         } catch (error) {
           console.error("Error validando QR:", error);
-          alert("Error: " + error.message + " (Asegúrese de tener permisos en Firebase o buena conexión)");
+          alert("Error: " + error.message);
           setMode(null);
         } finally {
           setIsProcessing(false);
@@ -334,16 +345,15 @@ const AttendanceScreen = () => {
   const handleConfirm = async () => {
     if (!scannedUser) return;
     try {
-      await addDoc(collection(db, 'attendance'), {
-        userId: scannedUser.id,
-        userName: scannedUser.name || 'Sin nombre',
+      await supabase.from('attendance').insert({
+        user_id: scannedUser.id,
+        user_name: scannedUser.name || 'Sin nombre',
         rut: scannedUser.rut,
-        assignedInstallationId: scannedUser.assignedInstallationId || null,
-        assignedInstallationName: scannedUser.assignedInstallationName || null,
-        assignedSectionId: scannedUser.assignedSectionId || null,
-        assignedSectionName: scannedUser.assignedSectionName || null,
-        type: mode, // 'ingreso' o 'salida'
-        timestamp: serverTimestamp()
+        assigned_installation_id: scannedUser.assignedInstallationId || null,
+        assigned_installation_name: scannedUser.assignedInstallationName || null,
+        assigned_section_id: scannedUser.assignedSectionId || null,
+        assigned_section_name: scannedUser.assignedSectionName || null,
+        type: mode
       });
       alert(`Registro de ${mode} correcto`);
       navigate('/login');

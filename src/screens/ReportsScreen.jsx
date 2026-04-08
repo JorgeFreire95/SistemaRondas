@@ -4,8 +4,7 @@ import { useNavigate, useLocation as useRouterLocation } from 'react-router-dom'
 import { ChevronLeft, MapPin, Calendar, Clock, User, Building, Trash2 } from 'lucide-react';
 import { useLocation } from '../context/LocationContext';
 import { useAuth } from '../context/AuthContext';
-import { collection, getDocs, writeBatch, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 
 const Container = styled.div`
   display: flex;
@@ -188,15 +187,15 @@ const ReportsScreen = () => {
   }, [filterGuardId, scannedPoints.length]);
 
   React.useEffect(() => {
-    // Fetch all installations to map IDs to Names
-    const unsub = onSnapshot(collection(db, 'installations'), (snap) => {
-      const instMap = {};
-      snap.docs.forEach(doc => {
-        instMap[doc.id] = doc.data().name;
-      });
-      setInstallations(instMap);
-    });
-    return unsub;
+    const fetchInst = async () => {
+      const { data } = await supabase.from('installations').select('id, name');
+      if (data) {
+        const instMap = {};
+        data.forEach(d => { instMap[d.id] = d.name; });
+        setInstallations(instMap);
+      }
+    };
+    fetchInst();
   }, []);
 
   const handleClear = async () => {
@@ -204,15 +203,7 @@ const ReportsScreen = () => {
     
     setIsClearing(true);
     try {
-      const q = collection(db, 'scannedPoints');
-      const snapshot = await getDocs(q);
-      const batch = writeBatch(db);
-      
-      snapshot.docs.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
-      
-      await batch.commit();
+      await supabase.from('scanned_points').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       alert('Todos los reportes han sido eliminados.');
     } catch (error) {
       console.error("Error clearing reports:", error);
@@ -239,8 +230,8 @@ const ReportsScreen = () => {
   const groupedRounds = React.useMemo(() => {
     const map = new Map();
     filteredPoints.forEach(point => {
-      // Use roundId or generate a unique id for offline points without roundId
-      const key = point.roundId && point.roundId !== 'no-round' ? point.roundId : `no-round-${point.timestamp?.toDate().getTime()}`;
+    const key = point.roundId && point.roundId !== 'no-round' ? point.roundId : `no-round-${new Date(point.timestamp).getTime()}`;
+
       
       if (!map.has(key)) {
         map.set(key, {
@@ -259,8 +250,8 @@ const ReportsScreen = () => {
     
     // Sort descending by timestamp
     return Array.from(map.values()).sort((a, b) => {
-      const timeA = a.timestamp?.toDate().getTime() || 0;
-      const timeB = b.timestamp?.toDate().getTime() || 0;
+      const timeA = new Date(a.timestamp).getTime() || 0;
+      const timeB = new Date(b.timestamp).getTime() || 0;
       return timeB - timeA;
     });
   }, [filteredPoints]);
@@ -317,12 +308,12 @@ const ReportsScreen = () => {
         {groupedRounds.map((round) => {
           const installationName = round.installationName || installations[round.installationId] || 'Sistema';
           const timeLabel = round.roundTime ? `RONDA: ${round.roundTime}` : 'Ronda Libre';
-          const dateLabel = round.timestamp?.toDate().toLocaleDateString('es-CL');
-          const timeGroup = round.timestamp?.toDate().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+          const dateLabel = round.timestamp ? new Date(round.timestamp).toLocaleDateString('es-CL') : '';
+          const timeGroup = round.timestamp ? new Date(round.timestamp).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : '';
 
           return (
             <ReportItem 
-              key={round.roundId || round.timestamp?.toDate().getTime()} 
+              key={round.roundId || new Date(round.timestamp).getTime()} 
               onClick={() => navigate('/round-details', { 
                 state: { 
                   roundId: round.roundId,

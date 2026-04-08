@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Clock, Play, MapPin, Building } from 'lucide-react';
-import { collection, onSnapshot, query, where, doc } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 import { useLocation } from '../context/LocationContext';
 
 const Container = styled.div`
@@ -122,31 +121,19 @@ const AdminSchedulesScreen = () => {
   const [sections, setSections] = useState([]);
 
   useEffect(() => {
-    // Set effective installation ID in context
     setAdminInstallationId(instId);
     
-    // Fetch installation info
-    const unsubInst = onSnapshot(doc(db, 'installations', instId), (snap) => {
-      if (snap.exists()) setInstallation({ id: snap.id, ...snap.data() });
-    });
+    const fetchData = async () => {
+      const { data: instData } = await supabase.from('installations').select('*').eq('id', instId).single();
+      if (instData) setInstallation(instData);
 
-    // Fetch schedules
-    const q = query(collection(db, 'installations', instId, 'schedules'));
-    const unsubSched = onSnapshot(q, (snap) => {
-      setSchedules(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+      const { data: schedData } = await supabase.from('schedules').select('*').eq('installation_id', instId).order('time', { ascending: true });
+      if (schedData) setSchedules(schedData.map(d => ({ id: d.id, time: d.time, sectionId: d.section_id })));
 
-    // Fetch sections for names
-    const qSec = query(collection(db, 'installations', instId, 'sections'));
-    const unsubSec = onSnapshot(qSec, (snap) => {
-      setSections(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-
-    return () => {
-      unsubInst();
-      unsubSched();
-      unsubSec();
+      const { data: secData } = await supabase.from('sections').select('*').eq('installation_id', instId);
+      if (secData) setSections(secData.map(d => ({ id: d.id, name: d.name })));
     };
+    fetchData();
   }, [instId]);
 
   const handleStartRound = (sched) => {

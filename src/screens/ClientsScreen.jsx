@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, UserPlus, Shield, MapPin, Mail, CreditCard, Building, Trash2, Edit2, X, Navigation as NavigationIcon, Search, UserCheck } from 'lucide-react';
-import { collection, query, onSnapshot, where, deleteDoc, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 import { useAuth } from '../context/AuthContext';
 
 const Container = styled.div`
@@ -217,25 +216,20 @@ const ClientsScreen = () => {
   const [editInst, setEditInst] = useState('');
 
   useEffect(() => {
-    // Listen to installations
-    const unsubInst = onSnapshot(query(collection(db, 'installations')), (snap) => {
-      setInstallations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      if (err.code !== 'permission-denied') console.error("Error fetching installations:", err);
-    });
+    const fetchData = async () => {
+      const { data: instData } = await supabase.from('installations').select('*');
+      if (instData) setInstallations(instData);
 
-    // Listen to clients
-    const qCli = query(collection(db, 'users'), where('role', '==', 'cliente'));
-    const unsubCli = onSnapshot(qCli, (snap) => {
-      setClients(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      if (err.code !== 'permission-denied') console.error("Error fetching clients:", err);
-    });
-
-    return () => {
-      unsubInst();
-      unsubCli();
+      const { data: cliData } = await supabase.from('users').select('*').eq('role', 'cliente');
+      if (cliData) setClients(cliData.map(d => ({ id: d.id, name: d.name, email: d.email, rut: d.rut, address: d.address, assignedInstallationId: d.assigned_installation_id })));
     };
+    fetchData();
+
+    const channel = supabase
+      .channel('clients-screen')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchData())
+      .subscribe();
+    return () => supabase.removeChannel(channel);
   }, []);
 
   const sortedAndFilteredClients = React.useMemo(() => {
@@ -284,7 +278,7 @@ const ClientsScreen = () => {
   const handleDelete = async (id) => {
     if (window.confirm('¿Estás seguro de eliminar este cliente?')) {
       try {
-        await deleteDoc(doc(db, 'users', id));
+        await supabase.from('users').delete().eq('id', id);
         alert('Cliente eliminado');
       } catch (err) {
         console.error(err);
@@ -304,13 +298,13 @@ const ClientsScreen = () => {
 
   const handleUpdate = async () => {
     try {
-      await updateDoc(doc(db, 'users', editingClient.id), {
+      await supabase.from('users').update({
         name: editName,
         rut: editRut,
         address: editAddress,
         email: editEmail,
-        assignedInstallationId: editInst
-      });
+        assigned_installation_id: editInst
+      }).eq('id', editingClient.id);
       setEditingClient(null);
       alert('Perfil actualizado');
     } catch (err) {

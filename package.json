@@ -9,6 +9,7 @@
     "@capacitor/geolocation": "^8.1.0",
     "@capacitor/share": "^8.0.1",
     "@ionic/pwa-elements": "^3.4.0",
+    "@supabase/supabase-js": "^2.102.1",
     "@vitejs/plugin-react": "^6.0.1",
     "firebase": "^12.11.0",
     "html5-qrcode": "^2.3.8",
@@ -46,6 +47,7 @@
   },
   "homepage": "https://github.com/JorgeFreire95/SistemaRondas#readme",
   "devDependencies": {
-    "@capacitor/cli": "^8.2.0"
+    "@capacitor/cli": "^8.2.0",
+    "@google-cloud/storage": "^7.19.0"
   }
 }

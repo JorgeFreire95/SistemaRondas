@@ -1,9 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
-import { collection, addDoc, serverTimestamp, query, onSnapshot, orderBy, updateDoc, doc } from 'firebase/firestore';
-import { db, storage } from '../config/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../config/supabase';
 import { useAuth } from './AuthContext';
 
 const LocationContext = createContext();
@@ -11,12 +9,6 @@ const LocationContext = createContext();
 export const LocationProvider = ({ children }) => {
   const { user } = useAuth();
   
-  // Helper for 'Black Box' diagnostics
-  const addDebugLog = async (step, details = {}) => {
-    // DISABLED for Quota Rescue: Too many writes for Spark Plan.
-    // console.log("Debug Log (Simulated):", step, details);
-  };
-
   const lastSyncRef = React.useRef({ time: 0, coords: null });
 
   const [location, setLocation] = useState(null);
@@ -33,19 +25,59 @@ export const LocationProvider = ({ children }) => {
 
   const effectiveInstId = adminInstallationId || user?.assignedInstallationId;
 
+  // Fetch scanned points
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'scannedPoints'), orderBy('timestamp', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const points = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setScannedPoints(points);
-    }, (err) => {
-      if (err.code !== 'permission-denied') console.error("Error fetching scanned points:", err);
-    });
-    return unsubscribe;
+
+    const fetchScannedPoints = async () => {
+      const { data, error } = await supabase
+        .from('scanned_points')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (!error && data) {
+        setScannedPoints(data.map(d => ({
+          id: d.id,
+          data: d.data,
+          pointId: d.point_id,
+          pointName: d.point_name,
+          question: d.question,
+          answer: d.answer,
+          observation: d.observation,
+          qrCode: d.qr_code,
+          photoUrl: d.photo_url,
+          latitude: d.latitude,
+          longitude: d.longitude,
+          guardId: d.guard_id,
+          guardName: d.guard_name,
+          guardRole: d.guard_role,
+          roundId: d.round_id,
+          installationId: d.installation_id,
+          installationName: d.installation_name,
+          roundTime: d.round_time,
+          timestamp: d.created_at
+        })));
+      }
+    };
+
+    fetchScannedPoints();
+
+    // Realtime subscription
+    const channel = supabase
+      .channel('scanned-points')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'scanned_points'
+      }, () => {
+        fetchScannedPoints();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [user]);
 
-  // Global listener for marking points of the assigned installation
+  // Fetch marking points for assigned installation
   useEffect(() => {
     if (!effectiveInstId || effectiveInstId === 'no-installation') {
       setMarkingPoints([]);
@@ -53,92 +85,153 @@ export const LocationProvider = ({ children }) => {
       return;
     }
 
-    setLoadingPoints(true);
-    const q = query(
-      collection(db, 'installations', effectiveInstId, 'markingPoints'),
-      orderBy('createdAt', 'asc')
-    );
+    const fetchMarkingPoints = async () => {
+      setLoadingPoints(true);
+      let query = supabase
+        .from('marking_points')
+        .select('*')
+        .eq('installation_id', effectiveInstId)
+        .order('created_at', { ascending: true });
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let pts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      
-      // Filter points if the user is a guard assigned to a specific section
-      if (user?.role === 'guardia' && user?.assignedSectionId) {
-        pts = pts.filter(p => p.sectionId === user.assignedSectionId);
+      const { data, error } = await query;
+
+      if (!error && data) {
+        let pts = data.map(d => ({
+          id: d.id,
+          installationId: d.installation_id,
+          sectionId: d.section_id,
+          name: d.name,
+          qrCode: d.qr_code,
+          question: d.question,
+          createdAt: d.created_at
+        }));
+
+        if (user?.role === 'guardia' && user?.assignedSectionId) {
+          pts = pts.filter(p => p.sectionId === user.assignedSectionId);
+        }
+
+        setMarkingPoints(pts);
       }
-      
-      setMarkingPoints(pts);
       setLoadingPoints(false);
-    }, (err) => {
-      setLoadingPoints(false);
-      if (err.code !== 'permission-denied') console.error("Error fetching marking points:", err);
-    });
+    };
 
-    return unsubscribe;
+    fetchMarkingPoints();
+
+    const channel = supabase
+      .channel('marking-points-' + effectiveInstId)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'marking_points',
+        filter: `installation_id=eq.${effectiveInstId}`
+      }, () => {
+        fetchMarkingPoints();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [effectiveInstId, user?.assignedSectionId, user?.role]);
 
-  // Global listener for sections of the assigned installation
+  // Fetch sections
   useEffect(() => {
     if (!effectiveInstId || effectiveInstId === 'no-installation') {
       setSections([]);
       return;
     }
-    const q = query(
-      collection(db, 'installations', effectiveInstId, 'sections'),
-      orderBy('createdAt', 'asc')
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let secs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      
-      // Filter sections if the user is a guard assigned to a specific section
-      if (user?.role === 'guardia' && user?.assignedSectionId) {
-        secs = secs.filter(s => s.id === user.assignedSectionId);
+
+    const fetchSections = async () => {
+      const { data, error } = await supabase
+        .from('sections')
+        .select('*')
+        .eq('installation_id', effectiveInstId)
+        .order('created_at', { ascending: true });
+
+      if (!error && data) {
+        let secs = data.map(d => ({
+          id: d.id,
+          installationId: d.installation_id,
+          name: d.name,
+          createdAt: d.created_at
+        }));
+
+        if (user?.role === 'guardia' && user?.assignedSectionId) {
+          secs = secs.filter(s => s.id === user.assignedSectionId);
+        }
+
+        setSections(secs);
       }
-      
-      setSections(secs);
-    }, (err) => {
-      if (err.code !== 'permission-denied') console.error("Error fetching sections:", err);
-    });
-    return unsubscribe;
+    };
+
+    fetchSections();
+
+    const channel = supabase
+      .channel('sections-' + effectiveInstId)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'sections',
+        filter: `installation_id=eq.${effectiveInstId}`
+      }, () => {
+        fetchSections();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [effectiveInstId, user?.assignedSectionId, user?.role]);
 
-  // Global listener for assigned installation info
+  // Fetch assigned installation info
   useEffect(() => {
     if (!effectiveInstId || effectiveInstId === 'no-installation') {
       setAssignedInstData(null);
       return;
     }
 
-    const unsub = onSnapshot(doc(db, 'installations', effectiveInstId), (snap) => {
-      if (snap.exists()) setAssignedInstData({ id: snap.id, ...snap.data() });
-    }, (err) => {
-      if (err.code !== 'permission-denied') console.error("Error fetching assigned inst:", err);
-    });
+    const fetchInst = async () => {
+      const { data, error } = await supabase
+        .from('installations')
+        .select('*')
+        .eq('id', effectiveInstId)
+        .single();
 
-    return unsub;
+      if (!error && data) {
+        setAssignedInstData(data);
+      }
+    };
+
+    fetchInst();
   }, [effectiveInstId]);
 
   const addScannedPoint = async (data, extra = {}) => {
     if (location && user) {
       try {
-        const docRef = await addDoc(collection(db, 'scannedPoints'), {
-          data,
-          ...extra,
-          photoUrl: extra.photoUrl || null, // Ensure field exists
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          timestamp: serverTimestamp(),
-          guardId: user.uid,
-          guardName: user.name,
-          guardRole: user.role,
-          roundId: currentRoundId || 'no-round',
-          installationId: effectiveInstId || 'no-installation',
-          installationName: assignedInstData?.name || 'Sistema',
-          roundTime: extra.roundTime || roundData?.roundTime || null
-        });
-        return docRef.id;
+        const { data: inserted, error } = await supabase
+          .from('scanned_points')
+          .insert({
+            data,
+            point_id: extra.pointId || null,
+            point_name: extra.pointName || null,
+            question: extra.question || null,
+            answer: extra.answer || null,
+            observation: extra.observation || null,
+            qr_code: extra.qrCode || null,
+            photo_url: extra.photoUrl || null,
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            guard_id: user.id,
+            guard_name: user.name,
+            guard_role: user.role,
+            round_id: currentRoundId || 'no-round',
+            installation_id: effectiveInstId || null,
+            installation_name: assignedInstData?.name || 'Sistema',
+            round_time: extra.roundTime || roundData?.roundTime || null
+          })
+          .select('id')
+          .single();
+
+        if (error) throw error;
+        return inserted.id;
       } catch (e) {
-        console.error("Error adding document: ", e);
+        console.error("Error adding scanned point:", e);
         return null;
       }
     }
@@ -148,7 +241,8 @@ export const LocationProvider = ({ children }) => {
   // Helper to convert base64 to Blob
   const base64ToBlob = (base64, contentType = 'image/jpeg') => {
     try {
-      const byteCharacters = atob(base64);
+      const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
+      const byteCharacters = atob(base64Data);
       const byteArrays = [];
       for (let offset = 0; offset < byteCharacters.length; offset += 512) {
         const slice = byteCharacters.slice(offset, offset + 512);
@@ -167,63 +261,43 @@ export const LocationProvider = ({ children }) => {
   };
 
   const uploadPointPhoto = async (docId, base64) => {
-    if (!docId) { alert("Diagnostic: Missing DocID"); return; }
-    if (!base64) { alert("Diagnostic: Missing Photo Data"); return; }
-    if (!user) { alert("Diagnostic: Missing User Auth"); return; }
-    
-    await addDebugLog("upload_start", { docId, dataSize: base64.length });
-
-    // WATCHDOG: Force clear 'pending' status after 50 seconds (longer for retries)
-    const watchdog = setTimeout(async () => {
-      try {
-        console.warn("Watchdog triggered: Upload timeout.");
-        await updateDoc(doc(db, 'scannedPoints', docId), {
-          photoUrl: null,
-          photoError: 'timeout_50s'
-        });
-        await addDebugLog("upload_timeout", { docId });
-      } catch (e) {
-        console.error("Watchdog update failed:", e);
-      }
-    }, 50000);
+    if (!docId || !base64 || !user) return null;
 
     let attempts = 0;
     while (attempts < 3) {
       attempts++;
       try {
-        await addDebugLog("upload_attempt", { docId, attempt: attempts });
-        
-        const fileName = `evidencias_rondas/${Date.now()}_att${attempts}.jpg`;
-        const storageRef = ref(storage, fileName);
-        
-        // Convert base64 to Blob and use uploadBytes
+        const fileName = `evidencias/${Date.now()}_att${attempts}.jpg`;
         const blob = base64ToBlob(base64);
         if (!blob) throw new Error("Could not convert base64 to blob");
-        
-        await uploadBytes(storageRef, blob);
-        const downloadURL = await getDownloadURL(storageRef);
-        
-        clearTimeout(watchdog);
-        await updateDoc(doc(db, 'scannedPoints', docId), {
-          photoUrl: downloadURL,
-          photoError: null
-        });
-        
-        await addDebugLog("upload_success", { docId, url: downloadURL });
+
+        const { error: uploadError } = await supabase.storage
+          .from('evidencias')
+          .upload(fileName, blob, { contentType: 'image/jpeg' });
+
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = supabase.storage
+          .from('evidencias')
+          .getPublicUrl(fileName);
+
+        const downloadURL = urlData.publicUrl;
+
+        await supabase
+          .from('scanned_points')
+          .update({ photo_url: downloadURL, photo_error: null })
+          .eq('id', docId);
+
         return downloadURL;
       } catch (err) {
         console.error(`Attempt ${attempts} failed:`, err);
-        await addDebugLog("upload_fail", { docId, attempt: attempts, error: err.code || err.message });
-        
         if (attempts >= 3) {
-          clearTimeout(watchdog);
-          window.alert(`FALLO TOTAL (3 reintentos): ${err.code || err.message}`);
-          await updateDoc(doc(db, 'scannedPoints', docId), {
-            photoUrl: null,
-            photoError: `failed_after_3_tries_${err.code || 'unknown'}`
-          });
+          window.alert(`FALLO TOTAL (3 reintentos): ${err.message || 'unknown'}`);
+          await supabase
+            .from('scanned_points')
+            .update({ photo_url: null, photo_error: `failed_after_3_tries` })
+            .eq('id', docId);
         } else {
-          // Wait 2 seconds before next attempt
           await new Promise(r => setTimeout(r, 2000));
         }
       }
@@ -231,7 +305,7 @@ export const LocationProvider = ({ children }) => {
     return null;
   };
 
-  // Effect for basic location watching (always on when logged in)
+  // Effect for basic location watching
   useEffect(() => {
     let watchId;
 
@@ -254,9 +328,7 @@ export const LocationProvider = ({ children }) => {
         timeout: 10000,
         maximumAge: 5000
       }, (pos) => {
-        if (pos) {
-          setLocation(pos);
-        }
+        if (pos) setLocation(pos);
       });
     };
 
@@ -270,46 +342,51 @@ export const LocationProvider = ({ children }) => {
   // Effect for managing active round status
   useEffect(() => {
     if (isTracking && user) {
-      if (currentRoundId) return; // Already have a round (resuming)
+      if (currentRoundId) return;
 
       const startRound = async () => {
         try {
-          const roundDoc = await addDoc(collection(db, 'rounds'), {
-            guardId: user.uid,
-            guardName: user.name,
-            guardRole: user.role,
-            startTime: serverTimestamp(),
-            status: 'active',
-            installationId: effectiveInstId || 'no-installation',
-            scheduleId: roundData?.scheduleId || null,
-            roundTime: roundData?.roundTime || null
-          });
-          setCurrentRoundId(roundDoc.id);
-          
-          // Sync immediately to user doc for admin visibility
-          await updateDoc(doc(db, 'users', user.uid), {
-            activeRoundId: roundDoc.id
-          });
+          const { data, error } = await supabase
+            .from('rounds')
+            .insert({
+              guard_id: user.id,
+              guard_name: user.name,
+              guard_role: user.role,
+              status: 'active',
+              installation_id: effectiveInstId || null,
+              schedule_id: roundData?.scheduleId || null,
+              round_time: roundData?.roundTime || null
+            })
+            .select('id')
+            .single();
 
-          setLocationHistory([]); // Reset history for new round
+          if (error) throw error;
+          setCurrentRoundId(data.id);
+
+          await supabase
+            .from('users')
+            .update({ active_round_id: data.id })
+            .eq('id', user.id);
+
+          setLocationHistory([]);
         } catch (e) {
           console.error("Error starting round:", e);
         }
       };
       startRound();
     } else if (!isTracking && user) {
-      // Clear active round from user profile
       const clearRound = async () => {
         try {
           if (currentRoundId) {
-            await updateDoc(doc(db, 'rounds', currentRoundId), {
-              endTime: serverTimestamp(),
-              status: 'completed'
-            });
+            await supabase
+              .from('rounds')
+              .update({ end_time: new Date().toISOString(), status: 'completed' })
+              .eq('id', currentRoundId);
           }
-          await updateDoc(doc(db, 'users', user.uid), {
-            activeRoundId: null
-          });
+          await supabase
+            .from('users')
+            .update({ active_round_id: null })
+            .eq('id', user.id);
         } catch (e) {
           console.error("Error clearing round:", e);
         }
@@ -330,44 +407,46 @@ export const LocationProvider = ({ children }) => {
     setIsTracking(true);
   };
 
-  // Effect for syncing path to Firestore during an active round (THROTTLED for Quota Rescue)
+  // Sync path during active round (THROTTLED)
   useEffect(() => {
     if (isTracking && currentRoundId && location) {
       const now = Date.now();
       const coords = location.coords;
       
-      // Calculate distance if we have previous coords
       let distanceMoved = 999;
       if (lastSyncRef.current.coords) {
         const last = lastSyncRef.current.coords;
         distanceMoved = Math.sqrt(
           Math.pow(coords.latitude - last.latitude, 2) + 
           Math.pow(coords.longitude - last.longitude, 2)
-        ) * 111320; // Approx meters
+        ) * 111320;
       }
 
-      // ONLY SYNC if 60 seconds passed OR moved more than 50 meters
       if (now - lastSyncRef.current.time < 60000 && distanceMoved < 50) {
-        return; 
+        return;
       }
 
       const syncPoint = async () => {
         try {
           lastSyncRef.current = { time: now, coords: { latitude: coords.latitude, longitude: coords.longitude } };
-          
-          const newPoint = { lat: coords.latitude, lng: coords.longitude };
-          
-          await updateDoc(doc(db, 'users', user.uid), {
-            currentLat: coords.latitude,
-            currentLng: coords.longitude,
-            lastLocationUpdate: serverTimestamp(),
-            activeRoundId: currentRoundId
-          });
 
-          await addDoc(collection(db, 'rounds', currentRoundId, 'path'), {
-            ...newPoint,
-            timestamp: serverTimestamp()
-          });
+          await supabase
+            .from('users')
+            .update({
+              current_lat: coords.latitude,
+              current_lng: coords.longitude,
+              last_location_update: new Date().toISOString(),
+              active_round_id: currentRoundId
+            })
+            .eq('id', user.id);
+
+          await supabase
+            .from('round_paths')
+            .insert({
+              round_id: currentRoundId,
+              lat: coords.latitude,
+              lng: coords.longitude
+            });
         } catch (err) {
           console.error("Error syncing location:", err);
         }

@@ -2,8 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, FileText, Download, Calendar, MapPin, User as UserIcon, Search, Filter } from 'lucide-react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Capacitor } from '@capacitor/core';
@@ -146,22 +145,34 @@ const PDFScreen = () => {
   const [selGuard, setSelGuard] = useState('all');
 
   useEffect(() => {
-    // Fetch installations
-    const unsubInst = onSnapshot(collection(db, 'installations'), (snap) => {
-      const instMap = {};
-      snap.forEach(doc => instMap[doc.id] = doc.data().name);
-      setInstallations(instMap);
-    });
+    const fetchData = async () => {
+      const { data: instData } = await supabase.from('installations').select('id, name');
+      if (instData) {
+        const instMap = {};
+        instData.forEach(d => instMap[d.id] = d.name);
+        setInstallations(instMap);
+      }
 
-    // Fetch reports
-    const q = query(collection(db, 'scannedPoints'), orderBy('timestamp', 'desc'));
-    const unsubScans = onSnapshot(q, (snap) => {
-      const s = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setScans(s);
+      const { data: scansData } = await supabase.from('scanned_points').select('*').order('created_at', { ascending: false });
+      if (scansData) {
+        setScans(scansData.map(d => ({
+          id: d.id,
+          guardName: d.guard_name,
+          guardRole: d.guard_role,
+          installationId: d.installation_id,
+          installationName: d.installation_name,
+          pointName: d.point_name,
+          data: d.data,
+          roundTime: d.round_time,
+          answer: d.answer,
+          question: d.question,
+          observation: d.observation,
+          timestamp: d.created_at
+        })));
+      }
       setLoading(false);
-    });
-
-    return () => { unsubInst(); unsubScans(); };
+    };
+    fetchData();
   }, []);
 
   const uniqueGuards = useMemo(() => {
@@ -169,7 +180,7 @@ const PDFScreen = () => {
   }, [scans]);
 
   const filteredData = scans.filter(item => {
-    const date = item.timestamp?.toDate();
+    const date = item.timestamp ? new Date(item.timestamp) : null;
     if (!date) return false;
 
     const itemDateStr = date.toISOString().split('T')[0];
@@ -178,7 +189,7 @@ const PDFScreen = () => {
     const matchesGuard = selGuard === 'all' || item.guardName === selGuard;
 
     return isInDateRange && matchesInst && matchesGuard;
-  }).sort((a,b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+  }).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   const generatePDF = () => {
     const doc = new jsPDF();
@@ -204,7 +215,7 @@ const PDFScreen = () => {
                         item.guardRole === 'director' ? '(Dir.)' : '';
       
       const rowData = [
-        item.timestamp?.toDate().toLocaleString() || 'N/A',
+        item.timestamp ? new Date(item.timestamp).toLocaleString() : 'N/A',
         `${item.guardName || 'N/A'} ${roleLabel}`,
         item.installationName || installations[item.installationId] || 'N/A',
         item.pointName || item.data || 'N/A',

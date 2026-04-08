@@ -2,10 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Search, LogIn, LogOut, Calendar, Clock, User, Building, Trash2 } from 'lucide-react';
-import { collection, query, onSnapshot, orderBy, writeBatch, getDocs } from 'firebase/firestore';
+import { supabase } from '../config/supabase';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { db } from '../config/firebase';
 
 const Container = styled.div`
   display: flex;
@@ -190,40 +189,49 @@ const AdminAttendanceScreen = () => {
   const [filterType, setFilterType] = useState('todos');
 
   useEffect(() => {
-    const unsubRecords = onSnapshot(query(collection(db, 'attendance'), orderBy('timestamp', 'desc')), (snap) => {
-      setRecords(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const fetchData = async () => {
+      const { data: recData } = await supabase.from('attendance').select('*').order('created_at', { ascending: false });
+      if (recData) setRecords(recData.map(d => ({
+        id: d.id,
+        userId: d.user_id,
+        userName: d.user_name,
+        rut: d.rut,
+        type: d.type,
+        timestamp: d.created_at,
+        assignedInstallationId: d.assigned_installation_id,
+        assignedInstallationName: d.assigned_installation_name,
+        assignedSectionId: d.assigned_section_id,
+        assignedSectionName: d.assigned_section_name
+      })));
 
-    const unsubInst = onSnapshot(query(collection(db, 'installations')), (snap) => {
-      setInstallations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+      const { data: instData } = await supabase.from('installations').select('*');
+      if (instData) setInstallations(instData);
 
-    const unsubUsers = onSnapshot(query(collection(db, 'users')), (snap) => {
-      const uDict = {};
-      snap.docs.forEach(doc => { uDict[doc.id] = doc.data(); });
-      setUsersInfo(uDict);
-    });
+      const { data: usersData } = await supabase.from('users').select('*');
+      if (usersData) {
+        const uDict = {};
+        usersData.forEach(u => { uDict[u.id] = u; });
+        setUsersInfo(uDict);
+      }
 
-    return () => {
-      unsubRecords();
-      unsubInst();
-      unsubUsers();
+      const { data: secData } = await supabase.from('sections').select('*');
+      if (secData) {
+        const grouped = {};
+        secData.forEach(s => {
+          if (!grouped[s.installation_id]) grouped[s.installation_id] = [];
+          grouped[s.installation_id].push({ id: s.id, name: s.name });
+        });
+        setAllSections(grouped);
+      }
     };
-  }, []);
+    fetchData();
 
-  useEffect(() => {
-    if (installations.length === 0) return;
-    const unsubs = installations.map(inst => {
-      const q = query(collection(db, 'installations', inst.id, 'sections'));
-      return onSnapshot(q, (snap) => {
-        setAllSections(prev => ({
-          ...prev,
-          [inst.id]: snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        }));
-      });
-    });
-    return () => unsubs.forEach(u => u());
-  }, [installations]);
+    const channel = supabase
+      .channel('admin-attendance')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, () => fetchData())
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, []);
 
   const filteredRecords = useMemo(() => {
     let filtered = records;
@@ -245,7 +253,7 @@ const AdminAttendanceScreen = () => {
 
   const formatDate = (timestamp) => {
     if (!timestamp) return { date: '--/--/----', time: '--:--' };
-    const date = timestamp.toDate();
+    const date = new Date(timestamp);
     return {
       date: date.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' }),
       time: date.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
@@ -257,15 +265,7 @@ const AdminAttendanceScreen = () => {
     
     setIsClearing(true);
     try {
-      const q = collection(db, 'attendance');
-      const snapshot = await getDocs(q);
-      const batch = writeBatch(db);
-      
-      snapshot.docs.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
-      
-      await batch.commit();
+      await supabase.from('attendance').delete().neq('id', '00000000-0000-0000-0000-000000000000');
       alert('Todos los registros han sido eliminados.');
     } catch (error) {
       console.error("Error clearing attendance records:", error);
@@ -276,16 +276,16 @@ const AdminAttendanceScreen = () => {
   };
 
   const handleDownloadPDF = () => {
-    const doc = new jsPDF();
-    doc.text("Reporte de Asistencia", 14, 15);
+    const pdfDoc = new jsPDF();
+    pdfDoc.text("Reporte de Asistencia", 14, 15);
     
     const tableColumn = ["Fecha", "Hora", "Tipo", "Nombre", "RUT", "Instalacion", "Seccion"];
     const tableRows = [];
 
     filteredRecords.forEach(record => {
       const { date, time } = formatDate(record.timestamp);
-      const instId = record.assignedInstallationId || usersInfo[record.userId]?.assignedInstallationId;
-      const secId = record.assignedSectionId || usersInfo[record.userId]?.assignedSectionId;
+      const instId = record.assignedInstallationId || usersInfo[record.userId]?.assigned_installation_id;
+      const secId = record.assignedSectionId || usersInfo[record.userId]?.assigned_section_id;
 
       const instName = record.assignedInstallationName || (instId ? installations.find(i => i.id === instId)?.name : '');
       const secName = record.assignedSectionName || ((instId && secId) ? allSections[instId]?.find(s => s.id === secId)?.name : '');
@@ -302,7 +302,7 @@ const AdminAttendanceScreen = () => {
       tableRows.push(recordData);
     });
 
-    autoTable(doc, {
+    autoTable(pdfDoc, {
       head: [tableColumn],
       body: tableRows,
       startY: 20,
@@ -311,7 +311,7 @@ const AdminAttendanceScreen = () => {
       headStyles: { fillColor: [0, 0, 0] }
     });
 
-    doc.save("Reporte_Asistencia.pdf");
+    pdfDoc.save("Reporte_Asistencia.pdf");
   };
 
   return (
@@ -356,8 +356,8 @@ const AdminAttendanceScreen = () => {
           {filteredRecords.map(record => {
             const { date, time } = formatDate(record.timestamp);
             
-            const instId = record.assignedInstallationId || usersInfo[record.userId]?.assignedInstallationId;
-            const secId = record.assignedSectionId || usersInfo[record.userId]?.assignedSectionId;
+            const instId = record.assignedInstallationId || usersInfo[record.userId]?.assigned_installation_id;
+            const secId = record.assignedSectionId || usersInfo[record.userId]?.assigned_section_id;
 
             const instName = record.assignedInstallationName || (instId ? installations.find(i => i.id === instId)?.name : null);
             const secName = record.assignedSectionName || ((instId && secId) ? allSections[instId]?.find(s => s.id === secId)?.name : null);

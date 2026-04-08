@@ -1,49 +1,56 @@
-# Sistema de Rondas - Capacitor Edition 🛡️
+# Sistema de Rondas - Capacitor & Supabase Edition 🛡️
 
-Sistema de gestión y monitoreo de rondas de seguridad en tiempo real. Este proyecto utiliza un stack web moderno (**Vite**, **React 19**) y **Capacitor 6** para ofrecer una experiencia nativa fluida en Android e iOS utilizando tecnologías web de alto rendimiento.
+Sistema de gestión y monitoreo de rondas de seguridad en tiempo real. Este proyecto utiliza un stack web moderno para ofrecer una experiencia nativa fluida en Android e iOS utilizando tecnologías de alto rendimiento.
+
+## 🛠️ Stack Tecnológico
+
+### Frontend & Core
+- **React 19**: Biblioteca principal para la interfaz de usuario.
+- **Vite**: Herramienta de construcción (build tool) ultra rápida para desarrollo frontend.
+- **Styled Components**: Sistema de estilizado basado en componentes (CSS-in-JS).
+- **Lucide React**: Set de iconos vectoriales modernos y ligeros.
+
+### Backend (BaaS) - Supabase
+- **Supabase Auth**: Gestión de usuarios y sesiones seguras.
+- **PostgreSQL**: Base de datos relacional para la persistencia de rondas, puntos y asistencia.
+- **Supabase Storage**: Almacenamiento de evidencias fotográficas.
+- **Supabase Realtime**: Sincronización en tiempo real de ubicaciones y estados de ronda mediante PostgreSQL Changes.
+
+### Mobile & Nativo
+- **Capacitor 6**: Framework para convertir la app web en aplicaciones nativas Android/iOS.
+- **@capacitor/geolocation**: Seguimiento preciso de la ubicación del guardia.
+- **@capacitor/camera**: Captura de evidencias fotográficas en alta resolución.
+- **@capacitor-mlkit/barcode-scanning**: Motor de escaneo de códigos QR de alta velocidad.
+
+### Librerías Adicionales
+- **jsPDF & jsPDF-AutoTable**: Motor de generación de reportes administrativos en formato PDF.
+- **React Router Dom**: Gestión de navegación y rutas de la aplicación.
 
 ## 🚀 Innovaciones y Rendimiento
 
+### 📊 Arquitectura Relacional
+Hemos migrado de un modelo NoSQL a **PostgreSQL**, garantizando integridad referencial y permitiendo consultas complejas para reportes avanzados de asistencia y rondas.
+
 ### 📸 Motor de Evidencias de "Alta Resiliencia"
-Hemos reconstruido el núcleo de captura de fotos para garantizar que ninguna prueba se pierda, incluso en condiciones de red extremas:
-- **Sistema de Triple Reintento**: La app realiza hasta 3 intentos automáticos de subida si detecta fallos de red.
-- **Procesado "Pluma" (Instantáneo)**: Optimización agresiva de imágenes (20% calidad / 500px) que permite una captura y transición instantánea, ideal para dispositivos de gama baja.
-- **Subida en Segundo Plano**: El guardia puede seguir con su ronda inmediatamente mientras el motor de fondo se encarga de la transmisión de datos.
-- **Caja Negra (Diagnóstico)**: Registro técnico detallado de cada paso de la subida para identificar bloqueos de permisos o red en tiempo real.
+- **Sistema de Triple Reintento**: Reintentos automáticos de subida ante fallos de red.
+- **Optimización de Imágenes**: Reducción de peso sin pérdida de claridad para transmisiones rápidas.
+- **Caja Negra**: Diagnóstico técnico detallado de cada proceso de subida.
 
-### 📱 Experiencia Móvil Universal
-- **Navegación Nativa**: Integración total con el **botón de retroceso físico** de Android y gestos laterales de iOS para una navegación intuitiva.
-- **Adaptación "Safe Area"**: Diseño compatible con "notches" (muescas de cámara) y barras de gestos, asegurando que ningún botón quede tapado por el hardware del teléfono.
-- **UI Inmersiva**: Configuración de `viewport-fit=cover` para una experiencia de pantalla completa real.
-
-### 🔋 Optimización de Cuota y Datos
-- **Sincronización Inteligente de GPS**: Throttling de ubicación a Firestore (60 segundos o 50 metros) para maximizar la duración de la cuota gratuita (Spark Plan) de Firebase.
-- **Consumo Mínimo de Datos**: Reducción drástica del peso de las evidencias fotográficas y eliminación de logs innecesarios en producción.
+### 🔋 Optimización de Datos
+- **GPS Throttling**: Sincronización inteligente de ubicación (60s / 50m) para optimizar el consumo de batería y datos móviles.
 
 ## ✨ Funcionalidades Core
+- **Guardia**: Registro de asistencia, escaneo de puntos QR, y captura de evidencias.
+- **Monitoreo**: Mapa en vivo (Realtime) y seguimiento de historial.
+- **Admin**: Gestión de personal, instalaciones, secciones y generación de reportes PDF.
 
-### 👮 Perfil Guardia
-- **Asistencia QR**: Registro integral de entrada/salida de turno.
-- **Rondas Guiadas**: Selección de horarios y puntos de marcaje obligatorios.
-- **Preguntas de Seguridad**: Verificación de estado del punto (ej: "¿Puerta cerrada?") con evidencia fotográfica obligatoria.
-- **Alertas de Diagnóstico**: Si una foto falla, el guardia ve un aviso visual claro con el motivo técnico (ej: señal débil).
-
-### 💼 Perfil Monitoreo (Supervisor & Cliente)
-- **Mapa en Vivo**: Seguimiento geoespacial de guardias activos ("En Ronda").
-- **Historial Detallado**: Acceso instantáneo a los puntos marcados con fotos de evidencia.
-- **Reportes PDF**: Generación de reportes profesionales con atribución automática de roles y filtros avanzados.
-
-### ⚙️ Perfil Administrador (Control Total)
-- **Gestión de Personal**: Validación estricta de RUT chileno y autogeneración de credenciales seguras.
-- **Control de Instalaciones**: Organización por Secciones (Pisos, Zonas) y asignación de puntos de marcaje.
-- **Prevención de Doble Sesión**: Aislamiento de perfiles para evitar conflictos de autenticación durante la creación de usuarios.
-
-## 🛠️ Instalación y Desarrollo
+## ⚙️ Instalación y Desarrollo
 
 1.  **Instalar dependencias**: `npm install`
-2.  **Modo desarrollo (Web)**: `npm run dev`
-3.  **Sincronización Nativa**: `npm run cap:sync`
-4.  **Despliegue a Dispositivo**: Ejecutar el botón **"Run"** desde Android Studio.
+2.  **Preparar entorno**: Configurar `src/config/supabase.js`.
+3.  **Build**: `npm run build`
+4.  **Sincronizar Nativo**: `npx cap sync android`
+5.  **Ejecutar**: Abrir en **Android Studio** y lanzar al dispositivo.
 
 ---
 Desarrollado con ❤️ para la gestión de seguridad inteligente.

@@ -5,8 +5,7 @@ import { ChevronLeft, Navigation as NavigationIcon } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { doc, onSnapshot, collection, query, orderBy, where } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 import { useLocation } from '../context/LocationContext';
 
 // Fix for default marker icons in Leaflet + Webpack/Vite
@@ -107,20 +106,51 @@ const MapScreen = () => {
   const [shouldFollow, setShouldFollow] = useState(true);
   const [mapReady, setMapReady] = useState(false);
 
+  // Fetch guard position when monitoring
   useEffect(() => {
     if (!monitorGuardId) return;
 
-    // Listen to guard's current position and active round
-    const unsubUser = onSnapshot(doc(db, 'users', monitorGuardId), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setMonitorData(data);
+    const fetchGuard = async () => {
+      const { data } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', monitorGuardId)
+        .single();
+      if (data) {
+        setMonitorData({
+          name: data.name,
+          currentLat: data.current_lat,
+          currentLng: data.current_lng,
+          activeRoundId: data.active_round_id
+        });
       }
-    });
+    };
 
-    return () => unsubUser();
+    fetchGuard();
+
+    // Realtime subscription for guard updates
+    const channel = supabase
+      .channel('monitor-guard-' + monitorGuardId)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'users',
+        filter: `id=eq.${monitorGuardId}`
+      }, (payload) => {
+        const d = payload.new;
+        setMonitorData({
+          name: d.name,
+          currentLat: d.current_lat,
+          currentLng: d.current_lng,
+          activeRoundId: d.active_round_id
+        });
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [monitorGuardId]);
 
+  // Fetch round path
   useEffect(() => {
     const targetRoundId = monitorRoundId || monitorData?.activeRoundId;
     if (!targetRoundId) {
@@ -128,20 +158,19 @@ const MapScreen = () => {
       return;
     }
 
-    // Listen to the round's path (active or historical)
-    const q = query(
-      collection(db, 'rounds', targetRoundId, 'path'),
-      orderBy('timestamp', 'asc')
-    );
-    const unsubPath = onSnapshot(q, (snap) => {
-      setMonitorPath(snap.docs.map(d => ({ lat: d.data().lat, lng: d.data().lng })));
-    }, (err) => {
-      if (err.code !== 'permission-denied') console.error("Error fetching monitor path:", err);
-    });
+    const fetchPath = async () => {
+      const { data } = await supabase
+        .from('round_paths')
+        .select('*')
+        .eq('round_id', targetRoundId)
+        .order('created_at', { ascending: true });
+      if (data) setMonitorPath(data.map(d => ({ lat: d.lat, lng: d.lng })));
+    };
 
-    return () => unsubPath();
+    fetchPath();
   }, [monitorRoundId, monitorData?.activeRoundId]);
 
+  // Fetch scanned points for the monitored round
   useEffect(() => {
     const targetRoundId = monitorRoundId || monitorData?.activeRoundId;
     if (!targetRoundId) {
@@ -149,24 +178,24 @@ const MapScreen = () => {
       return;
     }
 
-    // Listen to scanned points for this specific round (active or historical)
-    const q = query(
-      collection(db, 'scannedPoints'),
-      where('roundId', '==', targetRoundId)
-    );
-    const unsubScans = onSnapshot(q, (snap) => {
-      const s = snap.docs.map(d => ({
-        id: d.id,
-        lat: d.data().latitude,
-        lng: d.data().longitude,
-        timestamp: d.data().timestamp,
-        pointName: d.data().pointName || d.data().data
-      }));
-      // Sort chronologically
-      setMonitorScans(s.sort((a, b) => (a.timestamp?.toMillis() || 0) - (b.timestamp?.toMillis() || 0)));
-    });
+    const fetchScans = async () => {
+      const { data } = await supabase
+        .from('scanned_points')
+        .select('*')
+        .eq('round_id', targetRoundId)
+        .order('created_at', { ascending: true });
+      if (data) {
+        setMonitorScans(data.map(d => ({
+          id: d.id,
+          lat: d.latitude,
+          lng: d.longitude,
+          timestamp: d.created_at,
+          pointName: d.point_name || d.data
+        })));
+      }
+    };
 
-    return () => unsubScans();
+    fetchScans();
   }, [monitorRoundId, monitorData?.activeRoundId]);
 
   const currentCoords = monitorGuardId
@@ -186,12 +215,11 @@ const MapScreen = () => {
     if (monitorGuardId || monitorRoundId) {
       return monitorScans.map(s => [s.lat, s.lng]);
     }
-    // Personal mode: filter current scannedPoints by the active roundId
     if (!currentRoundId) return [];
 
     const activePoints = scannedPoints
       .filter(p => p.roundId === currentRoundId)
-      .sort((a, b) => (a.timestamp?.toMillis() || 0) - (b.timestamp?.toMillis() || 0));
+      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
     return activePoints.map(p => [p.latitude, p.longitude]);
   }, [monitorGuardId, monitorScans, scannedPoints, currentRoundId]);

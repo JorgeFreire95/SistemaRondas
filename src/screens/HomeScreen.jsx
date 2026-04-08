@@ -21,8 +21,7 @@ import {
 } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
-import { doc, onSnapshot, collection, query, orderBy, getDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
 
@@ -221,41 +220,38 @@ const HomeScreen = () => {
 
   useEffect(() => {
     if (user?.assignedInstallationId) {
-      // Fetch assigned installation
-      const unsubInst = onSnapshot(doc(db, 'installations', user.assignedInstallationId), (snap) => {
-        if (snap.exists()) setAssignedInst(snap.data());
-      }, (err) => {
-        if (err.code !== 'permission-denied') console.error("Error fetching installation:", err);
-      });
+      const fetchData = async () => {
+        // Fetch assigned installation
+        const { data: instData } = await supabase
+          .from('installations')
+          .select('*')
+          .eq('id', user.assignedInstallationId)
+          .single();
+        if (instData) setAssignedInst(instData);
 
-      // Fetch marking points for checklist
-      const q = query(collection(db, 'installations', user.assignedInstallationId, 'markingPoints'), orderBy('createdAt', 'asc'));
-      const unsubPoints = onSnapshot(q, (snap) => {
-        setMarkingPoints(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      }, (err) => {
-        if (err.code !== 'permission-denied') console.error("Error fetching points:", err);
-      });
+        // Fetch marking points
+        const { data: ptsData } = await supabase
+          .from('marking_points')
+          .select('*')
+          .eq('installation_id', user.assignedInstallationId)
+          .order('created_at', { ascending: true });
+        if (ptsData) setMarkingPoints(ptsData.map(d => ({ id: d.id, name: d.name, sectionId: d.section_id, qrCode: d.qr_code, question: d.question })));
 
-      // Fetch schedules
-      const qSched = query(collection(db, 'installations', user.assignedInstallationId, 'schedules'), orderBy('time', 'asc'));
-      const unsubSched = onSnapshot(qSched, (snap) => {
-        let docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        
-        // Filter by section if guard has an assignment
-        if (user?.role === 'guardia' && user?.assignedSectionId) {
-          docs = docs.filter(s => !s.sectionId || s.sectionId === user.assignedSectionId);
+        // Fetch schedules
+        const { data: schedData } = await supabase
+          .from('schedules')
+          .select('*')
+          .eq('installation_id', user.assignedInstallationId)
+          .order('time', { ascending: true });
+        if (schedData) {
+          let docs = schedData.map(d => ({ id: d.id, time: d.time, sectionId: d.section_id }));
+          if (user?.role === 'guardia' && user?.assignedSectionId) {
+            docs = docs.filter(s => !s.sectionId || s.sectionId === user.assignedSectionId);
+          }
+          setSchedules(docs);
         }
-        
-        setSchedules(docs);
-      }, (err) => {
-        if (err.code !== 'permission-denied') console.error("Error fetching schedules:", err);
-      });
-
-      return () => {
-        unsubInst();
-        unsubPoints();
-        unsubSched();
       };
+      fetchData();
     }
   }, [user]);
 
@@ -265,14 +261,12 @@ const HomeScreen = () => {
     if (!roundId) return;
     setIsResuming(true);
     try {
-      const roundSnap = await getDoc(doc(db, 'rounds', roundId));
-      if (roundSnap.exists()) {
-        const data = roundSnap.data();
+      const { data, error } = await supabase.from('rounds').select('*').eq('id', roundId).single();
+      if (data && !error) {
         resumeRound(roundId);
-        if (data.scheduleId) {
-          navigate(`/round/${data.scheduleId}?time=${data.roundTime || ''}`);
+        if (data.schedule_id) {
+          navigate(`/round/${data.schedule_id}?time=${data.round_time || ''}`);
         } else {
-          // Fallback if no scheduleId (though we are adding it now)
           navigate('/map'); 
         }
       } else {

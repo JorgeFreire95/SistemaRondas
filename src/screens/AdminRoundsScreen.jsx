@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Building, Search, MapPin, ChevronRight } from 'lucide-react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 
 const Container = styled.div`
   display: flex;
@@ -130,11 +129,11 @@ const AdminRoundsScreen = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    const q = query(collection(db, 'installations'), orderBy('name', 'asc'));
-    const unsub = onSnapshot(q, (snap) => {
-      setInstallations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    return unsub;
+    const fetchData = async () => {
+      const { data } = await supabase.from('installations').select('*').order('name', { ascending: true });
+      if (data) setInstallations(data);
+    };
+    fetchData();
   }, []);
 
   const filtered = installations.filter(i => 

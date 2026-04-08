@@ -12,16 +12,16 @@ import {
   Keyboard,
   X,
   Play,
-  Square
+  Square,
+  Camera as CameraIcon
 } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { db, storage } from '../config/firebase';
-import { collection, query, orderBy, onSnapshot, doc } from 'firebase/firestore';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
+import { supabase } from '../config/supabase';
 
 const Container = styled.div`
   display: flex;
@@ -288,13 +288,58 @@ const SectionHeader = styled.div`
   gap: 8px;
 `;
 
+const PhotoPreview = styled.div`
+  width: 100%;
+  height: 200px;
+  border-radius: 16px;
+  background: #F1F3F5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px dashed #DDD;
+  position: relative;
+`;
+
+const PreviewImg = styled.img`
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+`;
+
+const TakePhotoBtn = styled.button`
+  background: #E8F5E9;
+  color: #2E7D32;
+  border: 2px dashed #2E7D32;
+  padding: 20px;
+  border-radius: 16px;
+  width: 100%;
+  font-weight: 800;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+`;
+
 const RoundScreen = () => {
   const navigate = useNavigate();
   const { scheduleId } = useParams();
   const [searchParams] = useSearchParams();
   const roundTime = searchParams.get('time');
   const { user } = useAuth();
-  const { isTracking, setIsTracking, currentRoundId, scannedPoints, markingPoints: points, sections, addScannedPoint, startNewRound, effectiveInstId } = useLocation();
+  const { 
+    isTracking, 
+    setIsTracking, 
+    currentRoundId, 
+    scannedPoints, 
+    markingPoints: points, 
+    sections, 
+    addScannedPoint, 
+    startNewRound, 
+    effectiveInstId,
+    uploadPointPhoto 
+  } = useLocation();
   const [instName, setInstName] = useState('');
   const [manualModal, setManualModal] = useState(null); // pointId if open
   const [manualCode, setManualCode] = useState('');
@@ -303,6 +348,9 @@ const RoundScreen = () => {
   const [observation, setObservation] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [currentResponse, setCurrentResponse] = useState(null); // { answer, point }
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [capturedPhoto, setCapturedPhoto] = useState(null); // base64/uri
+  const [photoBase64, setPhotoBase64] = useState(null);
 
   useEffect(() => {
     // We removed the auto-start logic to let the user click "INICIAR RONDA" manually
@@ -310,14 +358,34 @@ const RoundScreen = () => {
 
   useEffect(() => {
     if (effectiveInstId) {
-      // Fetch installation name
-      const unsub = onSnapshot(doc(db, 'installations', effectiveInstId), (snap) => {
-        if (snap.exists()) setInstName(snap.data().name);
-      }, (err) => {
-        if (err.code !== 'permission-denied') console.error("Error fetching installation name:", err);
-      });
+      // Fetch installation name via Supabase
+      const fetchInstName = async () => {
+        const { data } = await supabase
+          .from('installations')
+          .select('name')
+          .eq('id', effectiveInstId)
+          .single();
+        if (data) setInstName(data.name);
+      };
+      
+      fetchInstName();
 
-      return unsub;
+      // Realtime subscription for name changes (optional but follows the original pattern)
+      const channel = supabase
+        .channel(`installation-${effectiveInstId}`)
+        .on('postgres_changes', { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'installations', 
+          filter: `id=eq.${effectiveInstId}` 
+        }, (payload) => {
+          if (payload.new && payload.new.name) {
+            setInstName(payload.new.name);
+          }
+        })
+        .subscribe();
+
+      return () => supabase.removeChannel(channel);
     }
   }, [effectiveInstId]);
 
@@ -396,39 +464,68 @@ const RoundScreen = () => {
       setCurrentResponse({ answer, point });
       setIsAddingObservation(true);
     } else {
-      const success = await addScannedPoint(point.name, {
-        pointId: point.id,
-        pointName: point.name,
-        question: point.question,
-        answer,
-        observation: '',
-        qrCode: manualCode.trim() || 'MANUAL',
-        roundTime: roundTime
-      });
-      if (success) {
-        alert("Punto marcado con éxito.");
-        setManualCode('');
-      }
+      setCurrentResponse({ answer, point });
+      setIsPhotoModalOpen(true);
     }
   };
 
   const handleConfirmObservation = async () => {
     if (!observation.trim()) return alert("Por favor, ingresa una observación.");
     setIsAddingObservation(false);
-    const success = await addScannedPoint(currentResponse.point.name, {
-      pointId: currentResponse.point.id,
-      pointName: currentResponse.point.name,
-      question: currentResponse.point.question,
-      answer: currentResponse.answer,
-      observation: observation,
-      qrCode: manualCode.trim() || 'MANUAL',
-      roundTime: roundTime
-    });
-    if (success) {
-      alert("Punto marcado con éxito.");
-      setManualCode('');
-      setObservation('');
-      setCurrentResponse(null);
+    setIsPhotoModalOpen(true);
+  };
+
+  const handleTakePicture = async () => {
+    try {
+      const image = await Camera.getPhoto({
+        quality: 70,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera
+      });
+
+      if (image) {
+        setCapturedPhoto(`data:image/jpeg;base64,${image.base64String}`);
+        setPhotoBase64(image.base64String);
+      }
+    } catch (e) {
+      console.error("Camera error:", e);
+    }
+  };
+
+  const handleFinalizeWithPhoto = async () => {
+    if (!photoBase64) return alert("Por favor, toma una foto como evidencia.");
+    
+    setIsUploading(true);
+    try {
+      const { point, answer } = currentResponse;
+      const docId = await addScannedPoint(point.name, {
+        pointId: point.id,
+        pointName: point.name,
+        question: point.question,
+        answer,
+        observation: observation,
+        qrCode: manualCode.trim() || 'MANUAL',
+        roundTime: roundTime
+      });
+
+      if (docId) {
+        await uploadPointPhoto(docId, photoBase64);
+        alert("Punto marcado y evidencia guardada con éxito.");
+        
+        // Reset and close
+        setIsPhotoModalOpen(false);
+        setCapturedPhoto(null);
+        setPhotoBase64(null);
+        setObservation('');
+        setManualCode('');
+        setCurrentResponse(null);
+      }
+    } catch (e) {
+      console.error("Error finalizing with photo:", e);
+      alert("Hubo un error al guardar la evidencia.");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -466,19 +563,24 @@ const RoundScreen = () => {
         <PointsList>
           {/* Group points by section */}
           {(() => {
+            if (!sections || !Array.isArray(sections)) return null;
+            const pts = points || [];
+
             const grouped = sections.reduce((acc, section) => {
+              if (!section || !section.id) return acc;
               acc[section.id] = {
                 name: section.name,
-                points: points.filter(p => p.sectionId === section.id)
+                points: pts.filter(p => p.sectionId === section.id)
               };
               return acc;
             }, {});
 
-            const pointsWithoutSection = points.filter(p => !p.sectionId || !sections.find(s => s.id === p.sectionId));
+            const pointsWithoutSection = pts.filter(p => !p.sectionId || !sections.find(s => s && s.id === p.sectionId));
             
             return (
               <>
                 {sections.map(section => {
+                  if (!section || !section.id || !grouped[section.id]) return null;
                   const sectionPoints = grouped[section.id].points;
                   if (sectionPoints.length === 0) return null;
                   return (
@@ -577,6 +679,45 @@ const RoundScreen = () => {
                autoFocus
              />
              <PrimaryBtn onClick={handleConfirmObservation}>CONFIRMAR</PrimaryBtn>
+          </ModalContent>
+        </ModalOverlay>
+      )}
+
+      {isPhotoModalOpen && (
+        <ModalOverlay>
+          <ModalContent>
+            <ModalHeader>
+              <ModalTitle>Evidencia Fotográfica</ModalTitle>
+              <X size={20} onClick={() => { setIsPhotoModalOpen(false); setCapturedPhoto(null); setPhotoBase64(null); }} style={{ cursor: 'pointer' }} />
+            </ModalHeader>
+            <p style={{ margin: 0, fontSize: 13, color: '#666' }}>
+              Captura una foto del sector para finalizar este punto.
+            </p>
+
+            {capturedPhoto ? (
+              <PhotoPreview>
+                <PreviewImg src={capturedPhoto} alt="Preview" />
+                <ActionBtn 
+                  style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+                  onClick={() => { setCapturedPhoto(null); setPhotoBase64(null); }}
+                >
+                  <X size={14} /> CAMBIAR
+                </ActionBtn>
+              </PhotoPreview>
+            ) : (
+              <TakePhotoBtn onClick={handleTakePicture}>
+                <CameraIcon size={32} />
+                <span>TOMAR FOTO</span>
+              </TakePhotoBtn>
+            )}
+
+            <PrimaryBtn 
+              $loading={isUploading} 
+              disabled={isUploading || !photoBase64}
+              onClick={handleFinalizeWithPhoto}
+            >
+              {isUploading ? 'SUBIENDO...' : 'GUARDAR Y FINALIZAR'}
+            </PrimaryBtn>
           </ModalContent>
         </ModalOverlay>
       )}

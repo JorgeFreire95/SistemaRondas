@@ -1,15 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
 import styled from 'styled-components';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ChevronLeft, Image as ImageIcon } from 'lucide-react';
+import { ChevronLeft, Image as ImageIcon, Camera as CameraIcon, X } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
 import { useLocation } from '../context/LocationContext';
 import { useAuth } from '../context/AuthContext';
-import { collection, query, where, onSnapshot, orderBy, updateDoc, doc } from 'firebase/firestore';
-import { db } from '../config/firebase';
-import { X } from 'lucide-react';
+
 
 const Container = styled.div`
   display: flex;
@@ -70,6 +68,17 @@ const Overlay = styled.div`
   pointer-events: none;
   z-index: 10;
   box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.5);
+`;
+
+const ModalContent = styled.div`
+  background: white;
+  border-radius: 24px;
+  padding: 24px;
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 `;
 
 const QuestionModal = styled.div`
@@ -139,6 +148,55 @@ const PrimaryBtn = styled.button`
   padding: 14px;
   border-radius: 12px;
   font-weight: 700;
+  cursor: ${props => props.$loading ? 'default' : 'pointer'};
+  background: ${props => props.$loading ? '#DDD' : '#1A1A1A'};
+`;
+
+const PhotoPreview = styled.div`
+  width: 100%;
+  height: 200px;
+  border-radius: 16px;
+  background: #F1F3F5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px dashed #DDD;
+  position: relative;
+`;
+
+const PreviewImg = styled.img`
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+`;
+
+const TakePhotoBtn = styled.button`
+  background: #E8F5E9;
+  color: #2E7D32;
+  border: 2px dashed #2E7D32;
+  padding: 20px;
+  border-radius: 16px;
+  width: 100%;
+  font-weight: 800;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+`;
+
+const ActionBtn = styled.button`
+  background: #1A1A1A;
+  color: white;
+  border: none;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   cursor: pointer;
 `;
 
@@ -209,6 +267,10 @@ const ScannerScreen = () => {
   const [observation, setObservation] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [currentResponse, setCurrentResponse] = useState(null); // { answer, point }
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [capturedPhoto, setCapturedPhoto] = useState(null);
+  const [photoBase64, setPhotoBase64] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const processCode = async (code) => {
     const trimmedCode = code.trim();
@@ -277,54 +339,67 @@ const ScannerScreen = () => {
       setCurrentResponse({ answer, point });
       setIsAddingObservation(true);
     } else {
-      // STEP 1: Mark point IMMEDIATELY in Firestore
-      await addScannedPoint(point.name, {
-        pointId: point.id,
-        pointName: point.name,
-        question: point.question,
-        answer,
-        observation: '',
-        qrCode: lastData || 'SCAN',
-        roundTime: roundTime,
-        photoUrl: null 
-      });
-
-      // UI FIRST: Show success immediately
-      setShowSuccess(true);
-      if (navigator.vibrate) navigator.vibrate(50);
-
-      setTimeout(() => {
-        if (returnTo) navigate(returnTo, { replace: true });
-      }, 600); // Snappy transition (600ms)
+      setCurrentResponse({ answer, point });
+      setIsPhotoModalOpen(true);
     }
   };
 
   const handleConfirmObservation = async () => {
     if (!observation.trim()) return alert("Por favor, ingresa una observación.");
     setIsAddingObservation(false);
-    
-    // STEP 1: Mark point IMMEDIATELY in Firestore
-    await addScannedPoint(currentResponse.point.name, {
-      pointId: currentResponse.point.id,
-      pointName: currentResponse.point.name,
-      question: currentResponse.point.question,
-      answer: currentResponse.answer,
-      observation: observation,
-      qrCode: lastData || 'SCAN',
-      roundTime: roundTime,
-      photoUrl: null
-    });
+    setIsPhotoModalOpen(true);
+  };
 
-    // UI FIRST
-    setShowSuccess(true);
-    if (navigator.vibrate) navigator.vibrate(50);
+  const handleTakePicture = async () => {
+    try {
+      const image = await Camera.getPhoto({
+        quality: 70,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera
+      });
+
+      if (image) {
+        setCapturedPhoto(`data:image/jpeg;base64,${image.base64String}`);
+        setPhotoBase64(image.base64String);
+      }
+    } catch (e) {
+      console.error("Camera error:", e);
+    }
+  };
+
+  const handleFinalizeWithPhoto = async () => {
+    if (!photoBase64) return alert("Por favor, toma una foto como evidencia.");
     
-    setObservation('');
-    setCurrentResponse(null);
-    
-    setTimeout(() => {
-      if (returnTo) navigate(returnTo, { replace: true });
-    }, 600); 
+    setIsUploading(true);
+    try {
+      const { point, answer } = currentResponse;
+      const docId = await addScannedPoint(point.name, {
+        pointId: point.id,
+        pointName: point.name,
+        question: point.question,
+        answer,
+        observation: observation,
+        qrCode: lastData || 'SCAN',
+        roundTime: roundTime
+      });
+
+      if (docId) {
+        await uploadPointPhoto(docId, photoBase64);
+        setShowSuccess(true);
+        if (navigator.vibrate) navigator.vibrate(50);
+        
+        // Brief delay for success animation then navigate back
+        setTimeout(() => {
+          if (returnTo) navigate(returnTo, { replace: true });
+        }, 800);
+      }
+    } catch (e) {
+      console.error("Error finalizing:", e);
+      alert("Hubo un error al guardar la evidencia.");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
 
@@ -468,6 +543,45 @@ const ScannerScreen = () => {
               />
               <PrimaryBtn onClick={handleConfirmObservation}>CONFIRMAR</PrimaryBtn>
            </ObservationModal>
+        </ModalOverlay>
+      )}
+
+      {isPhotoModalOpen && (
+        <ModalOverlay>
+          <ModalContent style={{ background: 'white', borderRadius: '24px', padding: '24px', width: '90%', maxWidth: '340px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700' }}>Evidencia Fotográfica</h3>
+              <X size={20} onClick={() => { setIsPhotoModalOpen(false); setCapturedPhoto(null); setPhotoBase64(null); }} style={{ cursor: 'pointer' }} />
+            </div>
+            <p style={{ margin: 0, fontSize: 13, color: '#666' }}>
+              Captura una foto del sector para finalizar este punto.
+            </p>
+
+            {capturedPhoto ? (
+              <PhotoPreview>
+                <PreviewImg src={capturedPhoto} alt="Preview" />
+                <ActionBtn 
+                  style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+                  onClick={() => { setCapturedPhoto(null); setPhotoBase64(null); }}
+                >
+                  <X size={14} /> CAMBIAR
+                </ActionBtn>
+              </PhotoPreview>
+            ) : (
+              <TakePhotoBtn onClick={handleTakePicture}>
+                <CameraIcon size={32} />
+                <span>TOMAR FOTO</span>
+              </TakePhotoBtn>
+            )}
+
+            <PrimaryBtn 
+              $loading={isUploading} 
+              disabled={isUploading || !photoBase64}
+              onClick={handleFinalizeWithPhoto}
+            >
+              {isUploading ? 'SUBIENDO...' : 'GUARDAR Y FINALIZAR'}
+            </PrimaryBtn>
+          </ModalContent>
         </ModalOverlay>
       )}
 

@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, updateDoc, orderBy, where } from 'firebase/firestore';
-import { db, storage } from '../config/firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { supabase } from '../config/supabase';
 import { ChevronLeft, Building, MapPin, Trash2, Edit2, Clock, X, Plus, Search, Scan, Image as ImageIcon } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Camera as CapacitorCamera } from '@capacitor/camera';
@@ -341,13 +339,18 @@ const InstallationsScreen = () => {
   const [scannerInstance, setScannerInstance] = useState(null);
 
   useEffect(() => {
-    const unsubInst = onSnapshot(collection(db, 'installations'), (snap) => {
-      setInstallations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      console.error("Error fetching installations:", err);
-      alert("Error cargando instalaciones: " + err.message);
-    });
-    return unsubInst;
+    const fetchInstallations = async () => {
+      const { data, error } = await supabase.from('installations').select('*');
+      if (data) setInstallations(data);
+      if (error) { console.error(error); alert('Error cargando instalaciones: ' + error.message); }
+    };
+    fetchInstallations();
+
+    const channel = supabase
+      .channel('installations')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'installations' }, () => fetchInstallations())
+      .subscribe();
+    return () => supabase.removeChannel(channel);
   }, []);
 
   const sortedInstallations = React.useMemo(() => {
@@ -371,49 +374,60 @@ const InstallationsScreen = () => {
     });
   }, [installations, sortBy, searchTerm]);
 
-  // Listen to points when modal opens
+  // Fetch points when modal opens
   useEffect(() => {
     if (!showPointsModal) return;
-    const q = query(collection(db, 'installations', showPointsModal.id, 'markingPoints'), orderBy('createdAt', 'asc'));
-    return onSnapshot(q, (snap) => {
-      setPointsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    const fetchPoints = async () => {
+      const { data } = await supabase.from('marking_points').select('*').eq('installation_id', showPointsModal.id).order('created_at', { ascending: true });
+      if (data) setPointsList(data.map(d => ({ id: d.id, name: d.name, qrCode: d.qr_code, question: d.question, sectionId: d.section_id, photoUrl: d.photo_url })));
+    };
+    fetchPoints();
+    const ch = supabase.channel('inst-points-' + showPointsModal.id).on('postgres_changes', { event: '*', schema: 'public', table: 'marking_points', filter: `installation_id=eq.${showPointsModal.id}` }, () => fetchPoints()).subscribe();
+    return () => supabase.removeChannel(ch);
   }, [showPointsModal]);
 
-  // Listen to schedules when modal opens
+  // Fetch schedules when modal opens
   useEffect(() => {
     if (!showScheduleModal) return;
-    const q = query(collection(db, 'installations', showScheduleModal.id, 'schedules'), orderBy('time', 'asc'));
-    return onSnapshot(q, (snap) => {
-      setSchedulesList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    const fetchSchedules = async () => {
+      const { data } = await supabase.from('schedules').select('*').eq('installation_id', showScheduleModal.id).order('time', { ascending: true });
+      if (data) setSchedulesList(data.map(d => ({ id: d.id, time: d.time, sectionId: d.section_id })));
+    };
+    fetchSchedules();
+    const ch = supabase.channel('inst-sched-' + showScheduleModal.id).on('postgres_changes', { event: '*', schema: 'public', table: 'schedules', filter: `installation_id=eq.${showScheduleModal.id}` }, () => fetchSchedules()).subscribe();
+    return () => supabase.removeChannel(ch);
   }, [showScheduleModal]);
 
-  // Fetch sections when schedules modal opens
+  // Fetch sections when schedule modal opens
   useEffect(() => {
     if (!showScheduleModal) return;
-    const q = query(collection(db, 'installations', showScheduleModal.id, 'sections'), orderBy('createdAt', 'asc'));
-    return onSnapshot(q, (snap) => {
-      setSectionsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    const fetchSections = async () => {
+      const { data } = await supabase.from('sections').select('*').eq('installation_id', showScheduleModal.id).order('created_at', { ascending: true });
+      if (data) setSectionsList(data.map(d => ({ id: d.id, name: d.name })));
+    };
+    fetchSections();
   }, [showScheduleModal]);
 
-  // Listen to sections when modal opens
+  // Fetch sections when sections modal opens
   useEffect(() => {
     if (!showSectionsModal) return;
-    const q = query(collection(db, 'installations', showSectionsModal.id, 'sections'), orderBy('createdAt', 'asc'));
-    return onSnapshot(q, (snap) => {
-      setSectionsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    const fetchSections = async () => {
+      const { data } = await supabase.from('sections').select('*').eq('installation_id', showSectionsModal.id).order('created_at', { ascending: true });
+      if (data) setSectionsList(data.map(d => ({ id: d.id, name: d.name })));
+    };
+    fetchSections();
+    const ch = supabase.channel('inst-sections-' + showSectionsModal.id).on('postgres_changes', { event: '*', schema: 'public', table: 'sections', filter: `installation_id=eq.${showSectionsModal.id}` }, () => fetchSections()).subscribe();
+    return () => supabase.removeChannel(ch);
   }, [showSectionsModal]);
 
-  // Also fetch sections when points modal opens
+  // Fetch sections when points modal opens
   useEffect(() => {
     if (!showPointsModal) return;
-    const q = query(collection(db, 'installations', showPointsModal.id, 'sections'), orderBy('createdAt', 'asc'));
-    return onSnapshot(q, (snap) => {
-      setSectionsList(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    const fetchSections = async () => {
+      const { data } = await supabase.from('sections').select('*').eq('installation_id', showPointsModal.id).order('created_at', { ascending: true });
+      if (data) setSectionsList(data.map(d => ({ id: d.id, name: d.name })));
+    };
+    fetchSections();
   }, [showPointsModal]);
 
   const handleCreateInstallation = async () => {
@@ -422,14 +436,13 @@ const InstallationsScreen = () => {
     }
 
     try {
-      await addDoc(collection(db, 'installations'), {
+      await supabase.from('installations').insert({
         name: instName,
         region: instRegion,
         comuna: instComuna,
         street: instStreet,
         number: instNumber,
-        address: `${instStreet} ${instNumber}`,
-        createdAt: serverTimestamp()
+        address: `${instStreet} ${instNumber}`
       });
       setInstName('');
       setInstRegion('');
@@ -446,7 +459,7 @@ const InstallationsScreen = () => {
   const handleDelete = async (id) => {
     if (window.confirm('¿Estás seguro de eliminar esta instalación?')) {
       try {
-        await deleteDoc(doc(db, 'installations', id));
+        await supabase.from('installations').delete().eq('id', id);
         alert('Instalación eliminada');
       } catch (err) {
         console.error(err);
@@ -466,14 +479,14 @@ const InstallationsScreen = () => {
 
   const handleUpdate = async () => {
     try {
-      await updateDoc(doc(db, 'installations', editingInst.id), {
+      await supabase.from('installations').update({
         name: editName,
         region: editRegion,
         comuna: editComuna,
         street: editStreet,
         number: editNumber,
         address: `${editStreet} ${editNumber}`
-      });
+      }).eq('id', editingInst.id);
       setEditingInst(null);
       alert('Instalación actualizada');
     } catch (err) {
@@ -486,12 +499,12 @@ const InstallationsScreen = () => {
     if (!newPoint || !newPointQR) {
       return alert('Asigna un nombre y un código para el punto');
     }
-    await addDoc(collection(db, 'installations', showPointsModal.id, 'markingPoints'), {
+    await supabase.from('marking_points').insert({
+      installation_id: showPointsModal.id,
       name: newPoint,
-      qrCode: newPointQR,
+      qr_code: newPointQR,
       question: newPointQuestion,
-      sectionId: selectedSectionId || null,
-      createdAt: serverTimestamp()
+      section_id: selectedSectionId || null
     });
     setNewPoint('');
     setNewPointQR('');
@@ -500,35 +513,35 @@ const InstallationsScreen = () => {
   };
 
   const handleDeletePoint = async (pointId) => {
-    await deleteDoc(doc(db, 'installations', showPointsModal.id, 'markingPoints', pointId));
+    await supabase.from('marking_points').delete().eq('id', pointId);
   };
 
   const handleAddSchedule = async () => {
-    await addDoc(collection(db, 'installations', showScheduleModal.id, 'schedules'), {
+    await supabase.from('schedules').insert({
+      installation_id: showScheduleModal.id,
       time: newSchedule,
-      sectionId: selectedSectionId || null,
-      createdAt: serverTimestamp()
+      section_id: selectedSectionId || null
     });
     setNewSchedule('');
     setSelectedSectionId('');
   };
 
   const handleDeleteSchedule = async (schedId) => {
-    await deleteDoc(doc(db, 'installations', showScheduleModal.id, 'schedules', schedId));
+    await supabase.from('schedules').delete().eq('id', schedId);
   };
 
   const handleAddSection = async () => {
     if (!newSectionName) return;
-    await addDoc(collection(db, 'installations', showSectionsModal.id, 'sections'), {
-      name: newSectionName,
-      createdAt: serverTimestamp()
+    await supabase.from('sections').insert({
+      installation_id: showSectionsModal.id,
+      name: newSectionName
     });
     setNewSectionName('');
   };
 
   const handleDeleteSection = async (sectionId) => {
     if (window.confirm('¿Eliminar esta sección? Los puntos asociados quedarán sin sección.')) {
-      await deleteDoc(doc(db, 'installations', showSectionsModal.id, 'sections', sectionId));
+      await supabase.from('sections').delete().eq('id', sectionId);
     }
   };
 

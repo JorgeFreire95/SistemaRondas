@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, UserPlus, Shield, MapPin, Mail, CreditCard, Building, Trash2, Edit2, History, X, Navigation as NavigationIcon, Search } from 'lucide-react';
-import { collection, query, onSnapshot, where, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 import { useAuth } from '../context/AuthContext';
 
 const Container = styled.div`
@@ -254,42 +253,50 @@ const GuardsScreen = () => {
   const [editSectionId, setEditSectionId] = useState('');
 
   useEffect(() => {
-    // Listen to installations
-    const unsubInst = onSnapshot(query(collection(db, 'installations')), (snap) => {
-      setInstallations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      if (err.code !== 'permission-denied') console.error("Error fetching installations:", err);
-    });
-
-    // Listen to guards
-    const qGuards = query(collection(db, 'users'), where('role', '==', 'guardia'));
-    const unsubGuards = onSnapshot(qGuards, (snap) => {
-      setGuards(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
-      if (err.code !== 'permission-denied') console.error("Error fetching guards:", err);
-    });
-
-    return () => {
-      unsubInst();
-      unsubGuards();
+    const fetchInstallations = async () => {
+      const { data } = await supabase.from('installations').select('*');
+      if (data) setInstallations(data.map(d => ({ id: d.id, name: d.name, address: d.address, region: d.region, comuna: d.comuna })));
     };
+    fetchInstallations();
+
+    const fetchGuards = async () => {
+      const { data } = await supabase.from('users').select('*').eq('role', 'guardia');
+      if (data) setGuards(data.map(d => ({
+        id: d.id,
+        name: d.name,
+        email: d.email,
+        rut: d.rut,
+        address: d.address,
+        assignedInstallationId: d.assigned_installation_id,
+        assignedSectionId: d.assigned_section_id,
+        activeRoundId: d.active_round_id
+      })));
+    };
+    fetchGuards();
+
+    const channel = supabase
+      .channel('guards-screen')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchGuards())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'installations' }, () => fetchInstallations())
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }, []);
 
-  // Listen to ALL sections to show names in the list
   useEffect(() => {
     if (installations.length === 0) return;
-    
-    const unsubs = installations.map(inst => {
-      const q = query(collection(db, 'installations', inst.id, 'sections'), orderBy('createdAt', 'asc'));
-      return onSnapshot(q, (snap) => {
-        setAllSections(prev => ({
-          ...prev,
-          [inst.id]: snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        }));
-      });
-    });
-
-    return () => unsubs.forEach(u => u());
+    const fetchAllSections = async () => {
+      const { data } = await supabase.from('sections').select('*').order('created_at', { ascending: true });
+      if (data) {
+        const grouped = {};
+        data.forEach(s => {
+          if (!grouped[s.installation_id]) grouped[s.installation_id] = [];
+          grouped[s.installation_id].push({ id: s.id, name: s.name });
+        });
+        setAllSections(grouped);
+      }
+    };
+    fetchAllSections();
   }, [installations]);
 
   // Sections for creation form (reactive to selectedInst)
@@ -357,7 +364,7 @@ const GuardsScreen = () => {
   const handleDelete = async (id) => {
     if (window.confirm('¿Estás seguro de eliminar este guardia?')) {
       try {
-        await deleteDoc(doc(db, 'users', id));
+        await supabase.from('users').delete().eq('id', id);
         alert('Guardia eliminado');
       } catch (err) {
         console.error(err);
@@ -388,14 +395,14 @@ const GuardsScreen = () => {
   const handleUpdate = async () => {
     try {
       const fullRut = `${editRut.trim()}-${editRutDv.trim().toUpperCase()}`;
-      await updateDoc(doc(db, 'users', editingGuard.id), {
+      await supabase.from('users').update({
         name: editName,
         rut: fullRut,
         address: editAddress,
         email: editEmail,
-        assignedInstallationId: editInst,
-        assignedSectionId: editSectionId || null
-      });
+        assigned_installation_id: editInst,
+        assigned_section_id: editSectionId || null
+      }).eq('id', editingGuard.id);
       setEditingGuard(null);
       alert('Perfil actualizado');
     } catch (err) {
