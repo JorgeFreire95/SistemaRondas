@@ -127,7 +127,8 @@ const LoginScreen = () => {
     if (loading) return;
     setLoading(true);
     setError('');
-    const res = await login(email.trim(), password.trim());
+    const sanitizedPassword = password.trim().replace(/[.-]/g, '');
+    const res = await login(email.trim(), sanitizedPassword);
     if (!res.success) {
       setError(res.message);
       setLoading(false);

@@ -28,8 +28,15 @@ Sistema de gestión y monitoreo de rondas de seguridad en tiempo real. Este proy
 
 ## 🚀 Innovaciones y Rendimiento
 
-### 📊 Arquitectura Relacional
-Hemos migrado de un modelo NoSQL a **PostgreSQL**, garantizando integridad referencial y permitiendo consultas complejas para reportes avanzados de asistencia y rondas.
+### 📊 Estandarización de Identidad (RUT/DV)
+- **Campos Separados**: Implementación de arquitectura RUT-DV en base de datos y UI para evitar errores de formato.
+- **Contraseñas Numéricas**: Política de contraseñas por defecto basadas estrictamente en la parte numérica del RUT, facilitando el acceso inicial.
+- **Saneamiento Automático**: Eliminación inteligente de puntos y guiones en tiempo real durante el registro y login.
+
+### 🔐 Seguridad y Resiliencia Auth
+- **Protección de Sesión**: Prevención de "secuestro de sesión" (Session Takeover) mediante clientes de autenticación aislados para administradores.
+- **Auto-Reparación de Usuarios**: Lógica de auto-sincronización que vincula cuentas de Auth huérfanas con perfiles de base de datos de forma automática.
+- **Cierre de Sesión Seguro**: Mecanismos para detectar y cerrar sesiones activas ante usos indebidos o accesos concurrentes.
 
 ### 📸 Motor de Evidencias de "Alta Resiliencia"
 - **Sistema de Triple Reintento**: Reintentos automáticos de subida ante fallos de red.
@@ -40,17 +47,20 @@ Hemos migrado de un modelo NoSQL a **PostgreSQL**, garantizando integridad refer
 - **GPS Throttling**: Sincronización inteligente de ubicación (60s / 50m) para optimizar el consumo de batería y datos móviles.
 
 ## ✨ Funcionalidades Core
-- **Guardia**: Registro de asistencia, escaneo de puntos QR, y captura de evidencias.
-- **Monitoreo**: Mapa en vivo (Realtime) y seguimiento de historial.
-- **Admin**: Gestión de personal, instalaciones, secciones y generación de reportes PDF.
+- **Guardia**: Registro de asistencia, escaneo de puntos QR, y captura de evidencias con geoposición.
+- **Monitoreo**: Mapa en vivo (Realtime) y seguimiento de historial de rondas.
+- **Admin**: Gestión de personal (Supervisores, Guardias, Clientes), instalaciones, secciones y generación de reportes PDF ejecutivos.
 
 ## ⚙️ Instalación y Desarrollo
 
 1.  **Instalar dependencias**: `npm install`
 2.  **Preparar entorno**: Configurar `src/config/supabase.js`.
-3.  **Build**: `npm run build`
-4.  **Sincronizar Nativo**: `npx cap sync android`
-5.  **Ejecutar**: Abrir en **Android Studio** y lanzar al dispositivo.
+3.  **Configuración Crítica Supabase**:
+    - Desactivar **"Confirm Email"** en Auth Settings.
+    - Asegurar que la tabla `public.users` tenga las políticas RLS adecuadas.
+4.  **Build**: `npm run build`
+5.  **Sincronizar Nativo**: `npx cap sync android`
+6.  **Ejecutar**: Abrir en **Android Studio** y lanzar al dispositivo.
 
 ---
 Desarrollado con ❤️ para la gestión de seguridad inteligente.

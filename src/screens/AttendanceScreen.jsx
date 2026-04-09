@@ -275,6 +275,7 @@ const AttendanceScreen = () => {
               id: userData.id, 
               name: userData.name, 
               rut: userData.rut,
+              role: userData.role,
               assignedInstallationId: userData.assigned_installation_id,
               assignedSectionId: userData.assigned_section_id
             };
@@ -345,21 +346,25 @@ const AttendanceScreen = () => {
   const handleConfirm = async () => {
     if (!scannedUser) return;
     try {
-      await supabase.from('attendance').insert({
+      const { error } = await supabase.from('attendance').insert({
         user_id: scannedUser.id,
         user_name: scannedUser.name || 'Sin nombre',
+        user_role: scannedUser.role || 'guardia',
         rut: scannedUser.rut,
-        assigned_installation_id: scannedUser.assignedInstallationId || null,
-        assigned_installation_name: scannedUser.assignedInstallationName || null,
-        assigned_section_id: scannedUser.assignedSectionId || null,
-        assigned_section_name: scannedUser.assignedSectionName || null,
+        installation_id: scannedUser.assignedInstallationId || null,
+        installation_name: scannedUser.assignedInstallationName || null,
+        section_id: scannedUser.assignedSectionId || null,
+        section_name: scannedUser.assignedSectionName || null,
         type: mode
       });
+
+      if (error) throw error;
+
       alert(`Registro de ${mode} correcto`);
       navigate('/login');
     } catch (err) {
-      console.error(err);
-      alert('Error al registrar la asistencia');
+      console.error("Error al registrar asistencia:", err);
+      alert('Error al registrar la asistencia: ' + (err.message || 'Error desconocido'));
     }
   };
 

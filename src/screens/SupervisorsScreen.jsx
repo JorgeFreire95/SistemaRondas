@@ -201,6 +201,7 @@ const SupervisorsScreen = () => {
   // Form states
   const [name, setName] = useState('');
   const [rut, setRut] = useState('');
+  const [dv, setDv] = useState('');
   const [address, setAddress] = useState('');
   const [email, setEmail] = useState('');
   const [selectedInst, setSelectedInst] = useState('');
@@ -212,6 +213,7 @@ const SupervisorsScreen = () => {
   const [editingSuper, setEditingSuper] = useState(null);
   const [editName, setEditName] = useState('');
   const [editRut, setEditRut] = useState('');
+  const [editDv, setEditDv] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editInst, setEditInst] = useState('');
@@ -222,7 +224,15 @@ const SupervisorsScreen = () => {
       if (instData) setInstallations(instData);
 
       const { data: supData } = await supabase.from('users').select('*').eq('role', 'supervisor');
-      if (supData) setSupervisors(supData.map(d => ({ id: d.id, name: d.name, email: d.email, rut: d.rut, address: d.address, assignedInstallationId: d.assigned_installation_id })));
+      if (supData) setSupervisors(supData.map(d => ({ 
+        id: d.id, 
+        name: d.name, 
+        email: d.email, 
+        rut: d.rut, 
+        dv: d.dv,
+        address: d.address, 
+        assignedInstallationId: d.assigned_installation_id 
+      })));
     };
     fetchData();
 
@@ -263,6 +273,7 @@ const SupervisorsScreen = () => {
 
     const res = await addUser(email, rut, name, 'supervisor', {
       rut,
+      dv,
       address,
       assignedInstallationId: selectedInst
     });
@@ -300,6 +311,7 @@ const SupervisorsScreen = () => {
     setEditingSuper(s);
     setEditName(s.name || '');
     setEditRut(s.rut || '');
+    setEditDv(s.dv || '');
     setEditAddress(s.address || '');
     setEditEmail(s.email || '');
     setEditInst(s.assignedInstallationId || '');
@@ -310,6 +322,7 @@ const SupervisorsScreen = () => {
       await supabase.from('users').update({
         name: editName,
         rut: editRut,
+        dv: editDv,
         address: editAddress,
         email: editEmail,
         assigned_installation_id: editInst
@@ -340,10 +353,21 @@ const SupervisorsScreen = () => {
             <Input placeholder="Nombre Completo" value={name} onChange={e => setName(e.target.value)} />
           </InputWrapper>
 
-          <InputWrapper>
-            <IconWrapper><CreditCard size={18} /></IconWrapper>
-            <Input placeholder="RUT" value={rut} onChange={e => setRut(e.target.value)} />
-          </InputWrapper>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+            <InputWrapper style={{ flex: 1, marginBottom: 0 }}>
+              <IconWrapper><CreditCard size={18} /></IconWrapper>
+              <Input placeholder="RUT (sin puntos ni guión)" value={rut} onChange={e => setRut(e.target.value.replace(/\D/g, ''))} />
+            </InputWrapper>
+            <InputWrapper style={{ width: '60px', marginBottom: 0 }}>
+              <Input 
+                placeholder="DV" 
+                value={dv} 
+                onChange={e => setDv(e.target.value)} 
+                style={{ paddingLeft: '12px', textAlign: 'center' }} 
+                maxLength={1}
+              />
+            </InputWrapper>
+          </div>
 
           <InputWrapper>
             <IconWrapper><MapPin size={18} /></IconWrapper>
@@ -404,7 +428,7 @@ const SupervisorsScreen = () => {
               <SupervisorItem key={s.id}>
                 <SuperInfo>
                   <SuperName>{s.name}</SuperName>
-                  <SuperSub>{s.email} | RUT: {s.rut}</SuperSub>
+                  <SuperSub>{s.email} | RUT: {s.rut}{s.dv ? `-${s.dv}` : ''}</SuperSub>
                   {inst && <SuperSub>Asignado a: <strong>{inst.name}</strong></SuperSub>}
                 </SuperInfo>
                 <SuperActions>
@@ -437,10 +461,21 @@ const SupervisorsScreen = () => {
               <IconWrapper><Shield size={18} /></IconWrapper>
               <Input placeholder="Nombre Completo" value={editName} onChange={e => setEditName(e.target.value)} />
             </InputWrapper>
-            <InputWrapper>
-              <IconWrapper><CreditCard size={18} /></IconWrapper>
-              <Input placeholder="RUT" value={editRut} onChange={e => setEditRut(e.target.value)} />
-            </InputWrapper>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+              <InputWrapper style={{ flex: 1, marginBottom: 0 }}>
+                <IconWrapper><CreditCard size={18} /></IconWrapper>
+                <Input placeholder="RUT" value={editRut} onChange={e => setEditRut(e.target.value.replace(/\D/g, ''))} />
+              </InputWrapper>
+              <InputWrapper style={{ width: '60px', marginBottom: 0 }}>
+                <Input 
+                  placeholder="DV" 
+                  value={editDv} 
+                  onChange={e => setEditDv(e.target.value)} 
+                  style={{ paddingLeft: '12px', textAlign: 'center' }} 
+                  maxLength={1}
+                />
+              </InputWrapper>
+            </div>
             <InputWrapper>
               <IconWrapper><MapPin size={18} /></IconWrapper>
               <Input placeholder="Dirección" value={editAddress} onChange={e => setEditAddress(e.target.value)} />

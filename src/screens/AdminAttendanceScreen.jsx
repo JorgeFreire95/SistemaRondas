@@ -195,13 +195,14 @@ const AdminAttendanceScreen = () => {
         id: d.id,
         userId: d.user_id,
         userName: d.user_name,
+        userRole: d.user_role,
         rut: d.rut,
         type: d.type,
         timestamp: d.created_at,
-        assignedInstallationId: d.assigned_installation_id,
-        assignedInstallationName: d.assigned_installation_name,
-        assignedSectionId: d.assigned_section_id,
-        assignedSectionName: d.assigned_section_name
+        assignedInstallationId: d.installation_id,
+        assignedInstallationName: d.installation_name,
+        assignedSectionId: d.section_id,
+        assignedSectionName: d.section_name
       })));
 
       const { data: instData } = await supabase.from('installations').select('*');

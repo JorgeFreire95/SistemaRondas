@@ -283,11 +283,11 @@ const AdminScreen = () => {
 
     if (res.success) {
       setEmail(''); setName(''); setRut(''); setRutDv(''); setAddress('');
-      alert('Usuario ' + role + ' creado con éxito');
+      alert('Usuario ' + role + ' registrado con éxito.');
     } else {
       let msg = res.message;
-      if (msg.includes('email-already-in-use')) {
-        msg = 'ESTE EMAIL YA ESTÁ REGISTRADO EN EL SISTEMA. Verifica en la consola de Firebase si el usuario existe en Authentication pero no en la base de datos.';
+      if (msg.includes('email-already-in-use') || msg.includes('already registered')) {
+        msg = 'Este email ya está registrado. Si no aparece en la lista pública, es posible que solo exista en el panel de Autenticación de Supabase.';
       }
       alert('Error: ' + msg);
     }
@@ -324,16 +324,22 @@ const AdminScreen = () => {
   const handleUpdate = async () => {
     try {
       const fullRut = `${editRut.trim()}-${editRutDv.trim().toUpperCase()}`;
-      await supabase.from('users').update({
+      const { error } = await supabase.from('users').update({
         name: editName,
         rut: fullRut,
         address: editAddress,
         email: editEmail,
         role: editRole
       }).eq('id', editingUser.uid);
+
+      if (error) throw error;
+
       setEditingUser(null);
-      alert('Usuario actualizado');
-    } catch (err) { console.error(err); alert('Error al actualizar'); }
+      alert('Usuario actualizado con éxito');
+    } catch (err) { 
+      console.error(err); 
+      alert('Error al actualizar: ' + err.message); 
+    }
   };
 
   return (

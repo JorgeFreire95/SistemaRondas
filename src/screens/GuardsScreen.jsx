@@ -266,6 +266,7 @@ const GuardsScreen = () => {
         name: d.name,
         email: d.email,
         rut: d.rut,
+        dv: d.dv,
         address: d.address,
         assignedInstallationId: d.assigned_installation_id,
         assignedSectionId: d.assigned_section_id,
@@ -333,10 +334,9 @@ const GuardsScreen = () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
-    const fullRut = `${rut.trim()}-${rutDv.trim().toUpperCase()}`;
-
     const res = await addUser(email, rut.trim(), name, 'guardia', {
-      rut: fullRut,
+      rut: rut.trim(),
+      dv: rutDv.trim().toUpperCase(),
       address,
       assignedInstallationId: selectedInst,
       assignedSectionId: selectedSectionId || null
@@ -394,10 +394,10 @@ const GuardsScreen = () => {
 
   const handleUpdate = async () => {
     try {
-      const fullRut = `${editRut.trim()}-${editRutDv.trim().toUpperCase()}`;
       await supabase.from('users').update({
         name: editName,
-        rut: fullRut,
+        rut: editRut.trim(),
+        dv: editRutDv.trim().toUpperCase(),
         address: editAddress,
         email: editEmail,
         assigned_installation_id: editInst,
@@ -433,7 +433,7 @@ const GuardsScreen = () => {
             <InputWrapper style={{ display: 'flex', gap: '10px' }}>
               <div style={{ position: 'relative', flex: 1 }}>
                 <IconWrapper><CreditCard size={18} /></IconWrapper>
-                <Input placeholder="RUT (Sin dígito)" value={rut} onChange={e => setRut(e.target.value)} style={{ marginBottom: 0 }} />
+                <Input placeholder="RUT (Sin dígito)" value={rut} onChange={e => setRut(e.target.value.replace(/\D/g, ''))} style={{ marginBottom: 0 }} />
               </div>
               <Input 
                 placeholder="DV" 
@@ -515,7 +515,7 @@ const GuardsScreen = () => {
                 <GuardName>{g.name}</GuardName>
                 {g.activeRoundId && <Badge>En Ronda</Badge>}
               </div>
-                  <GuardSub>{g.email} | RUT: {g.rut}</GuardSub>
+                  <GuardSub>{g.email} | RUT: {g.rut}{g.dv ? `-${g.dv}` : ''}</GuardSub>
                   {inst && (
                     <GuardSub>
                       Asignado a: <strong>{inst.name}</strong> 
@@ -562,7 +562,7 @@ const GuardsScreen = () => {
             <InputWrapper style={{ display: 'flex', gap: '10px' }}>
               <div style={{ position: 'relative', flex: 1 }}>
                 <IconWrapper><CreditCard size={18} /></IconWrapper>
-                <Input placeholder="RUT (Sin dígito)" value={editRut} onChange={e => setEditRut(e.target.value)} style={{ marginBottom: 0 }} />
+                <Input placeholder="RUT (Sin dígito)" value={editRut} onChange={e => setEditRut(e.target.value.replace(/\D/g, ''))} style={{ marginBottom: 0 }} />
               </div>
               <Input 
                 placeholder="DV" 

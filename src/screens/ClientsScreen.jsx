@@ -201,6 +201,7 @@ const ClientsScreen = () => {
   // Form states
   const [name, setName] = useState('');
   const [rut, setRut] = useState('');
+  const [dv, setDv] = useState('');
   const [address, setAddress] = useState('');
   const [email, setEmail] = useState('');
   const [selectedInst, setSelectedInst] = useState('');
@@ -211,6 +212,7 @@ const ClientsScreen = () => {
   const [editingClient, setEditingClient] = useState(null);
   const [editName, setEditName] = useState('');
   const [editRut, setEditRut] = useState('');
+  const [editDv, setEditDv] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editInst, setEditInst] = useState('');
@@ -221,7 +223,15 @@ const ClientsScreen = () => {
       if (instData) setInstallations(instData);
 
       const { data: cliData } = await supabase.from('users').select('*').eq('role', 'cliente');
-      if (cliData) setClients(cliData.map(d => ({ id: d.id, name: d.name, email: d.email, rut: d.rut, address: d.address, assignedInstallationId: d.assigned_installation_id })));
+      if (cliData) setClients(cliData.map(d => ({ 
+        id: d.id, 
+        name: d.name, 
+        email: d.email, 
+        rut: d.rut, 
+        dv: d.dv,
+        address: d.address, 
+        assignedInstallationId: d.assigned_installation_id 
+      })));
     };
     fetchData();
 
@@ -259,6 +269,7 @@ const ClientsScreen = () => {
 
     const res = await addUser(email, rut, name, 'cliente', {
       rut,
+      dv,
       address,
       assignedInstallationId: selectedInst
     });
@@ -291,6 +302,7 @@ const ClientsScreen = () => {
     setEditingClient(c);
     setEditName(c.name || '');
     setEditRut(c.rut || '');
+    setEditDv(c.dv || '');
     setEditAddress(c.address || '');
     setEditEmail(c.email || '');
     setEditInst(c.assignedInstallationId || '');
@@ -301,6 +313,7 @@ const ClientsScreen = () => {
       await supabase.from('users').update({
         name: editName,
         rut: editRut,
+        dv: editDv,
         address: editAddress,
         email: editEmail,
         assigned_installation_id: editInst
@@ -331,10 +344,21 @@ const ClientsScreen = () => {
             <Input placeholder="Nombre o Razón Social" value={name} onChange={e => setName(e.target.value)} />
           </InputWrapper>
 
-          <InputWrapper>
-            <IconWrapper><CreditCard size={18} /></IconWrapper>
-            <Input placeholder="RUT" value={rut} onChange={e => setRut(e.target.value)} />
-          </InputWrapper>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+            <InputWrapper style={{ flex: 1, marginBottom: 0 }}>
+              <IconWrapper><CreditCard size={18} /></IconWrapper>
+              <Input placeholder="RUT (sin puntos ni guión)" value={rut} onChange={e => setRut(e.target.value.replace(/\D/g, ''))} />
+            </InputWrapper>
+            <InputWrapper style={{ width: '60px', marginBottom: 0 }}>
+              <Input 
+                placeholder="DV" 
+                value={dv} 
+                onChange={e => setDv(e.target.value)} 
+                style={{ paddingLeft: '12px', textAlign: 'center' }} 
+                maxLength={1}
+              />
+            </InputWrapper>
+          </div>
 
           <InputWrapper>
             <IconWrapper><MapPin size={18} /></IconWrapper>
@@ -395,7 +419,7 @@ const ClientsScreen = () => {
               <ClientItem key={c.id}>
                 <ClientInfo>
                   <ClientName>{c.name}</ClientName>
-                  <ClientSub>{c.email} | RUT: {c.rut}</ClientSub>
+                  <ClientSub>{c.email} | RUT: {c.rut}{c.dv ? `-${c.dv}` : ''}</ClientSub>
                   {inst && <ClientSub>Asignado a: <strong>{inst.name}</strong></ClientSub>}
                 </ClientInfo>
                 <ClientActions>
@@ -428,10 +452,21 @@ const ClientsScreen = () => {
               <IconWrapper><Shield size={18} /></IconWrapper>
               <Input placeholder="Nombre o Razón Social" value={editName} onChange={e => setEditName(e.target.value)} />
             </InputWrapper>
-            <InputWrapper>
-              <IconWrapper><CreditCard size={18} /></IconWrapper>
-              <Input placeholder="RUT" value={editRut} onChange={e => setEditRut(e.target.value)} />
-            </InputWrapper>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+              <InputWrapper style={{ flex: 1, marginBottom: 0 }}>
+                <IconWrapper><CreditCard size={18} /></IconWrapper>
+                <Input placeholder="RUT" value={editRut} onChange={e => setEditRut(e.target.value.replace(/\D/g, ''))} />
+              </InputWrapper>
+              <InputWrapper style={{ width: '60px', marginBottom: 0 }}>
+                <Input 
+                  placeholder="DV" 
+                  value={editDv} 
+                  onChange={e => setEditDv(e.target.value)} 
+                  style={{ paddingLeft: '12px', textAlign: 'center' }} 
+                  maxLength={1}
+                />
+              </InputWrapper>
+            </div>
             <InputWrapper>
               <IconWrapper><MapPin size={18} /></IconWrapper>
               <Input placeholder="Dirección" value={editAddress} onChange={e => setEditAddress(e.target.value)} />

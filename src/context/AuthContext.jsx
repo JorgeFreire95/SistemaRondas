@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { supabase } from '../config/supabase';
+import { createClient } from '@supabase/supabase-js';
+import { supabase, supabaseUrl, supabaseAnonKey } from '../config/supabase';
 
 const AuthContext = createContext();
 
@@ -10,10 +11,10 @@ export const AuthProvider = ({ children }) => {
   
   // Unique ID for this device session
   const [sessionId] = useState(() => {
-    let sid = localStorage.getItem('rondas_session_id');
+    let sid = sessionStorage.getItem('rondas_session_id');
     if (!sid) {
       sid = Math.random().toString(36).substring(2) + Date.now().toString(36);
-      localStorage.setItem('rondas_session_id', sid);
+      sessionStorage.setItem('rondas_session_id', sid);
     }
     return sid;
   });
@@ -138,9 +139,9 @@ export const AuthProvider = ({ children }) => {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       
       if (error) {
-        let msg = "Error al iniciar sesión";
-        if (error.message.includes('Invalid login')) {
-          msg = "Usuario o contraseña incorrectos";
+        let msg = error.message;
+        if (msg.includes('Invalid login credentials')) {
+          msg = "Usuario o contraseña incorrectos. Si acabas de crear el usuario, asegúrate de haber desactivado la opción 'Confirm Email' en el Dashboard de Supabase.";
         }
         return { success: false, message: msg };
       }
@@ -176,21 +177,77 @@ export const AuthProvider = ({ children }) => {
 
   const addUser = async (email, password, name, role, extraData = {}) => {
     try {
-      // Use admin-like signup: create user via Supabase Auth
-      const { data, error } = await supabase.auth.signUp({ 
-        email, 
-        password,
-        options: {
-          data: { name, role }
+      // Create a temporary client that does NOT persist session
+      // to avoid signing out the current admin
+      const tempSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false
         }
       });
 
-      if (error) return { success: false, message: error.message };
+      const { data, error } = await tempSupabase.auth.signUp({ 
+        email, 
+        password,
+        options: {
+          data: { 
+            name, 
+            role,
+            rut: extraData.rut,
+            dv: extraData.dv
+          }
+        }
+      });
 
-      // Insert profile into users table
+      if (error) {
+        // If user already exists in Auth but not in public.users, we should still try to create the profile
+        if (error.message.includes('already registered')) {
+          // Attempt self-healing: try to log in the temp client with the provided password
+          // If it works, we get the UID and can fix the profile!
+          const { data: signInData, error: signInError } = await tempSupabase.auth.signInWithPassword({
+            email,
+            password
+          });
+
+          if (!signInError && signInData?.user?.id) {
+            console.log("Self-healing: User found in Auth, syncing profile...");
+            // Proceed to upsert with the retrieved ID
+            const { error: syncError } = await supabase
+              .from('users')
+              .upsert({
+                id: signInData.user.id,
+                email,
+                name,
+                role,
+                rut: extraData.rut || null,
+                dv: extraData.dv || null,
+                address: extraData.address || null,
+                assigned_installation_id: extraData.assignedInstallationId || null,
+                assigned_section_id: extraData.assignedSectionId || null,
+              }, { onConflict: 'id' });
+
+            if (!syncError) {
+              return { success: true, message: "Usuario sincronizado correctamente (ya existía en la base de datos de autenticación)." };
+            }
+          }
+
+          return { 
+            success: false, 
+            message: "Este usuario ya existe en el sistema de autenticación pero tiene una contraseña diferente (posiblemente la anterior con puntos/guiones). Para arreglarlo, bórralo de la pestaña 'Authentication' en el Dashboard de Supabase y créalo de nuevo aquí."
+          };
+        }
+        return { success: false, message: error.message };
+      }
+
+      if (!data?.user?.id) {
+        return { success: false, message: "No se pudo obtener el ID del usuario creado." };
+      }
+
+      // Profile is handled by database trigger + this upsert
       const { error: profileError } = await supabase
         .from('users')
-        .insert({
+        .upsert({
           id: data.user.id,
           email,
           name,
@@ -200,11 +257,11 @@ export const AuthProvider = ({ children }) => {
           address: extraData.address || null,
           assigned_installation_id: extraData.assignedInstallationId || null,
           assigned_section_id: extraData.assignedSectionId || null,
-        });
+        }, { onConflict: 'id' });
 
       if (profileError) {
-        console.error("Profile insert error:", profileError);
-        return { success: false, message: profileError.message };
+        console.error("Profile upsert error:", profileError);
+        return { success: false, message: "Error al crear perfil en la base de datos: " + profileError.message };
       }
 
       // Sign back in as the original admin (the signup above may have changed the session)
